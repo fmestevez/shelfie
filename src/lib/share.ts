@@ -2,6 +2,7 @@
 
 import { fetchAddedGames, loadCollection, loadDemo } from "./loadCollection";
 import type { CustomShelf } from "./shelves";
+import { type GroupKey, isGroupKey } from "./sorting";
 import { editsOf, useStore } from "./store";
 import type { CollectionEdits, Dims, GameOverride } from "./types";
 
@@ -25,6 +26,7 @@ const SETTINGS = [
   "spacing",
   "align",
   "includeExpansions",
+  "groupPrefs",
   "environment",
   "showArt",
   "showTitles",
@@ -43,7 +45,13 @@ interface SharePayload {
   o?: [number, Dims, number?, string?][];
   /** added games: [bggId, name, year?] */
   a?: [number, string, number?][];
+  /** per-game group choices: [collId, "theme" | "mechanic", value] */
+  g?: [number, GroupKey, string][];
 }
+
+/** Overrides that can travel: added games get fresh ids on the other end. */
+const travellingOverrides = (edits: CollectionEdits) =>
+  Object.entries(edits.overrides).filter(([id]) => Number(id) > 0);
 
 const toBase64Url = (s: string) =>
   btoa(String.fromCharCode(...new TextEncoder().encode(s)))
@@ -69,6 +77,10 @@ export function shareUrl(): string {
     payload.o = sharedOverrides.map(([id, o]) => [Number(id), o.dims!, o.versionId, o.versionName]);
   }
   if (edits.added.length) payload.a = edits.added.map((g) => [g.id, g.name, g.year]);
+  const groupChoices = travellingOverrides(edits).flatMap(([id, o]) =>
+    Object.entries(o.groups ?? {}).map(([k, v]) => [Number(id), k as GroupKey, v!] as [number, GroupKey, string]),
+  );
+  if (groupChoices.length) payload.g = groupChoices;
   const url = new URL(window.location.href);
   url.search = "";
   url.hash = "";
@@ -101,6 +113,10 @@ export function applyShareLink(): boolean {
   const overrides: Record<number, GameOverride> = {};
   for (const [id, dims, versionId, versionName] of payload.o ?? []) {
     overrides[id] = { dims, versionId, versionName, dimsSource: versionId ? "chosen-version" : "custom" };
+  }
+  for (const [id, key, value] of payload.g ?? []) {
+    if (!isGroupKey(key)) continue;
+    overrides[id] = { ...overrides[id], groups: { ...overrides[id]?.groups, [key]: value } };
   }
   // Keep the viewer's own custom shelves alongside the shared ones.
   if (Array.isArray(settings.customShelves)) {

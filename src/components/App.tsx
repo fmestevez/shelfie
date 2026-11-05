@@ -37,6 +37,7 @@ function useLayout() {
       areaBy: s.areaBy,
       areaReversed: s.areaReversed,
       sortReversed: s.sortReversed,
+      groupPrefs: s.groupPrefs,
       separateAreas: s.separateAreas,
       overhang: s.overhang,
       spacing: s.spacing,
@@ -59,8 +60,16 @@ function useLayout() {
   // Colours only matter for colour sorting; avoid re-sorting as they stream in otherwise.
   const colorsForSort = s.sortBy === "color" || s.areaBy === "color" ? s.colors : null;
   const sorted = useMemo(
-    () => sortGames(games, s.areaBy, s.sortBy, colorsForSort ?? {}, { area: s.areaReversed, sort: s.sortReversed }),
-    [games, s.areaBy, s.sortBy, colorsForSort, s.areaReversed, s.sortReversed],
+    () =>
+      sortGames(
+        games,
+        s.areaBy,
+        s.sortBy,
+        colorsForSort ?? {},
+        { area: s.areaReversed, sort: s.sortReversed },
+        s.groupPrefs,
+      ),
+    [games, s.areaBy, s.sortBy, colorsForSort, s.areaReversed, s.sortReversed, s.groupPrefs],
   );
   const layout = useMemo(
     () =>

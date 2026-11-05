@@ -6,6 +6,7 @@ import type { BodySpec } from "@/lib/bodies";
 import type { Layout } from "@/lib/packing";
 import { physicsApi } from "./three/physicsApi";
 import { editsOf, useStore } from "@/lib/store";
+import { GROUP_KEYS, type GroupKey, groupValues } from "@/lib/sorting";
 import type { Dims, DimsSource, Game, VersionInfo } from "@/lib/types";
 
 const SOURCE_LABEL: Record<DimsSource, string> = {
@@ -52,7 +53,18 @@ function SizeEditor({ game }: { game: Game }) {
   const changed = valid && dims.some((x, i) => Math.abs(x - game.dims[i]) > 0.05);
 
   const pickVersion = (id: string) => {
-    if (!id) return overrideGame(game.collId, null);
+    // "Automatic" clears the version and size only; a group choice stays.
+    if (!id) {
+      overrideGame(game.collId, {
+        versionId: undefined,
+        versionName: undefined,
+        dims: undefined,
+        dimsSource: undefined,
+        image: undefined,
+        thumbnail: undefined,
+      });
+      return;
+    }
     const v = versions?.find((x) => x.id === Number(id));
     if (!v) return;
     overrideGame(game.collId, {
@@ -159,6 +171,46 @@ function RotateButtons({ collId }: { collId: number }) {
   );
 }
 
+const GROUP_LABEL: Record<GroupKey, string> = { theme: "Theme group", mechanic: "Mechanic group" };
+
+/** Which of its themes / mechanics this game is grouped under, for whichever of them the shelves are sorted by. */
+function GroupChoice({ game }: { game: Game }) {
+  const areaBy = useStore((s) => s.areaBy);
+  const sortBy = useStore((s) => s.sortBy);
+  const override = useStore((s) => editsOf(s).overrides[game.collId]);
+  const overrideGame = useStore((s) => s.overrideGame);
+  const rows = GROUP_KEYS.filter((k) => k === areaBy || k === sortBy)
+    .map((k) => ({ k, values: groupValues[k](game) }))
+    .filter((r) => r.values.length > 1);
+  if (!rows.length) return null;
+  const input =
+    "w-full min-w-0 rounded-md bg-white/10 px-2 py-1 text-xs text-white outline-none focus:ring-2 focus:ring-amber-400 [&>option]:bg-neutral-900";
+
+  return (
+    <div className="space-y-2 border-t border-white/10 px-3 py-3 text-xs">
+      {rows.map(({ k, values }) => (
+        <label key={k} className="block">
+          <span className="mb-1 block text-white/65">{GROUP_LABEL[k]}</span>
+          <select
+            value={override?.groups?.[k] ?? ""}
+            onChange={(e) =>
+              overrideGame(game.collId, { groups: { ...override?.groups, [k]: e.target.value || undefined } })
+            }
+            className={input}
+          >
+            <option value="">Automatic</option>
+            {values.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export function SelectedGame({ layout, bodies }: { layout: Layout; bodies: BodySpec[] | null }) {
   const selectedId = useStore((s) => s.selectedId);
   const set = useStore((s) => s.set);
@@ -240,6 +292,7 @@ export function SelectedGame({ layout, bodies }: { layout: Layout; bodies: BodyS
           </div>
         </div>
         {bodies && <RotateButtons collId={game.collId} />}
+        <GroupChoice game={game} />
         <SizeEditor key={game.collId} game={game} />
         <div className="border-t border-white/10 px-3 py-2">
           <button

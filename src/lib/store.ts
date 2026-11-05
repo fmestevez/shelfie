@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Cover, LayoutConfig, ShelfSelection } from "./packing";
 import type { CustomShelf } from "./shelves";
-import type { AreaKey, SortKey } from "./sorting";
+import type { AreaKey, GroupKey, GroupPref, GroupPrefs, SortKey } from "./sorting";
 import type { CollectionEdits, Game, GameOverride } from "./types";
 
 /** Bump when the shape of saved games changes, so old saves are refetched. */
@@ -51,6 +51,8 @@ interface State extends Omit<LayoutConfig, "shelves" | "keepOrder"> {
   areaReversed: boolean;
   sortReversed: boolean;
   includeExpansions: boolean;
+  /** Which themes / mechanics to group by, and in what order. */
+  groupPrefs: GroupPrefs;
   environment: EnvironmentId;
   hdTextures: boolean;
   showArt: boolean;
@@ -67,6 +69,8 @@ interface State extends Omit<LayoutConfig, "shelves" | "keepOrder"> {
 
   set: (patch: Partial<State>) => void;
   setShelfCount: (modelId: string, count: number) => void;
+  /** null goes back to automatic grouping. */
+  setGroupPref: (key: GroupKey, pref: GroupPref | null) => void;
   /** Adds or updates a custom shelf; a new one is placed once. */
   saveCustomShelf: (shelf: CustomShelf) => void;
   deleteCustomShelf: (id: string) => void;
@@ -77,6 +81,17 @@ interface State extends Omit<LayoutConfig, "shelves" | "keepOrder"> {
   saveManualPoses: (poses: Record<number, ManualPose>) => void;
   /** Back to the floor piles (manual) or the packed layout (physics). */
   resetPhysics: () => void;
+}
+
+/** Drop cleared fields (and an empty group choice), so "no override" really is empty. */
+function tidy(o: GameOverride): GameOverride {
+  const out = Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as GameOverride;
+  if (out.groups) {
+    const groups = Object.fromEntries(Object.entries(out.groups).filter(([, v]) => v));
+    if (Object.keys(groups).length) out.groups = groups;
+    else delete out.groups;
+  }
+  return out;
 }
 
 const NO_EDITS: CollectionEdits = { overrides: {}, removed: [], added: [] };
@@ -112,6 +127,7 @@ export const useStore = create<State>()(
       lookahead: 8,
       overflow: "top-floor",
       includeExpansions: true,
+      groupPrefs: {},
       environment: "living-room",
       hdTextures: true,
       showArt: true,
@@ -133,6 +149,13 @@ export const useStore = create<State>()(
           if (existing) return { shelves: s.shelves.map((x) => (x.modelId === modelId ? { ...x, count } : x)) };
           return { shelves: [...s.shelves, { modelId, count }] };
         }),
+      setGroupPref: (key, pref) =>
+        set((s) => {
+          const groupPrefs = { ...s.groupPrefs };
+          if (pref) groupPrefs[key] = pref;
+          else delete groupPrefs[key];
+          return { groupPrefs };
+        }),
       saveCustomShelf: (shelf) =>
         set((s) => {
           const exists = s.customShelves.some((x) => x.id === shelf.id);
@@ -150,8 +173,8 @@ export const useStore = create<State>()(
         set((s) => {
           const e = editsOf(s);
           const overrides = { ...e.overrides };
-          if (o) overrides[collId] = { ...overrides[collId], ...o };
-          else delete overrides[collId];
+          if (o) overrides[collId] = tidy({ ...overrides[collId], ...o });
+          if (!o || !Object.keys(overrides[collId]).length) delete overrides[collId];
           return { edits: { ...s.edits, [s.username]: { ...e, overrides } } };
         }),
       removeGame: (collId) =>
@@ -199,6 +222,7 @@ export const useStore = create<State>()(
           "selectedId",
           "set",
           "setShelfCount",
+          "setGroupPref",
           "saveCustomShelf",
           "deleteCustomShelf",
           "overrideGame",

@@ -33,6 +33,10 @@ The side panel follows the order you'd decide things in.
 
 - **Areas first:** for example by BGG game type (Wargames, Strategy, Family…), optionally starting each area in a new compartment.
 - **Then a second key:** theme, mechanic, designer, publisher, series, colour, box size, year, complexity, rating or name.
+- **Your groups:**
+  - when sorting by theme or mechanic, "Choose themes" lists every value in your collection;
+  - untick the ones you don't want and rank the rest. Each game goes under its highest-ranked value, and groups appear in that order;
+  - any single game can be moved to another of its themes or mechanics from its card.
 - **Either level can be reversed,** and expansions always follow their base game.
 
 ### Placement

@@ -13,6 +13,7 @@ export function applyEdits(games: Game[], edits: CollectionEdits): Game[] {
       versionName: o.versionName ?? g.versionName,
       image: o.image ?? g.image,
       thumbnail: o.thumbnail ?? g.thumbnail,
+      groups: o.groups,
     };
   });
 }

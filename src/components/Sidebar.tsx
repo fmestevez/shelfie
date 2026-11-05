@@ -1,13 +1,23 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { addGameFromBgg, loadCollection, loadDemo } from "@/lib/loadCollection";
 import { shareUrl } from "@/lib/share";
 import { REPO_URL } from "@/lib/site";
 import { type ExportMode, sceneApi } from "./three/sceneApi";
 import type { Align, Layout, Orientation, OverflowMode } from "@/lib/packing";
 import { CUSTOM_SHELF_DEFAULTS, type CustomShelf, customCell, customShelfModel, SHELF_MODELS } from "@/lib/shelves";
-import { AREA_OPTIONS, type AreaKey, SORT_OPTIONS, type SortedGame, type SortKey } from "@/lib/sorting";
+import {
+  AREA_OPTIONS,
+  type AreaKey,
+  GROUP_KEYS,
+  type GroupKey,
+  groupCounts,
+  rankedValues,
+  SORT_OPTIONS,
+  type SortedGame,
+  type SortKey,
+} from "@/lib/sorting";
 import { manualStats } from "@/lib/bodies";
 import { editsOf, type EnvironmentId, type Mode, useStore } from "@/lib/store";
 import type { Game, SearchResult } from "@/lib/types";
@@ -209,8 +219,18 @@ function AddGame() {
 function EditsSummary() {
   const s = useStore();
   const edits = editsOf(s);
-  const changed = Object.keys(edits.overrides).length;
-  if (!edits.removed.length && !edits.added.length && !changed) return null;
+  const overrides = Object.entries(edits.overrides);
+  const resized = overrides.filter(([, o]) => o.dims || o.versionId);
+  const regrouped = overrides.filter(([, o]) => o.groups);
+  if (!edits.removed.length && !edits.added.length && !overrides.length) return null;
+  const NO_SIZE = {
+    versionId: undefined,
+    versionName: undefined,
+    dims: undefined,
+    dimsSource: undefined,
+    image: undefined,
+    thumbnail: undefined,
+  };
   const nameOf = (collId: number) =>
     [...s.games, ...edits.added].find((g) => g.collId === collId)?.name ?? `#${collId}`;
 
@@ -221,7 +241,8 @@ function EditsSummary() {
         {[
           edits.added.length && `${edits.added.length} added`,
           edits.removed.length && `${edits.removed.length} removed`,
-          changed && `${changed} resized`,
+          resized.length && `${resized.length} resized`,
+          regrouped.length && `${regrouped.length} regrouped`,
         ]
           .filter(Boolean)
           .join(", ")}
@@ -253,8 +274,8 @@ function EditsSummary() {
             </button>
           </li>
         ))}
-        {Object.keys(edits.overrides).map((id) => (
-          <li key={id} className="flex justify-between gap-2">
+        {resized.map(([id]) => (
+          <li key={`size-${id}`} className="flex justify-between gap-2">
             <button
               type="button"
               className="truncate text-left hover:text-white"
@@ -265,9 +286,27 @@ function EditsSummary() {
             <button
               type="button"
               className="shrink-0 text-amber-300 hover:underline"
-              onClick={() => s.overrideGame(Number(id), null)}
+              onClick={() => s.overrideGame(Number(id), NO_SIZE)}
             >
               reset size
+            </button>
+          </li>
+        ))}
+        {regrouped.map(([id, o]) => (
+          <li key={`group-${id}`} className="flex justify-between gap-2">
+            <button
+              type="button"
+              className="truncate text-left hover:text-white"
+              onClick={() => s.set({ selectedId: Number(id) })}
+            >
+              ⇢ {nameOf(Number(id))}: {Object.values(o.groups ?? {}).join(", ")}
+            </button>
+            <button
+              type="button"
+              className="shrink-0 text-amber-300 hover:underline"
+              onClick={() => s.overrideGame(Number(id), { groups: undefined })}
+            >
+              reset group
             </button>
           </li>
         ))}
@@ -461,8 +500,141 @@ function ShelvesSection() {
   );
 }
 
-function SortingSection() {
+const GROUP_NOUN: Record<GroupKey, [string, string]> = {
+  theme: ["theme", "themes"],
+  mechanic: ["mechanic", "mechanics"],
+};
+
+/**
+ * Pick which themes (or mechanics) to group by, and rank them: each game goes under its highest-ranked
+ * value, and the groups appear on the shelves in this order. Untouched, grouping stays automatic.
+ */
+function GroupChooser({ games, groupKey }: { games: Game[]; groupKey: GroupKey }) {
+  const pref = useStore((s) => s.groupPrefs[groupKey]);
+  const setPref = useStore((s) => s.setGroupPref);
+  const counts = useMemo(() => groupCounts(games, groupKey), [games, groupKey]);
+  const countOf = useMemo(() => new Map(counts.map((c) => [c.value, c.count])), [counts]);
+  const order = rankedValues(counts, pref);
+  const hidden = new Set(pref?.hidden ?? []);
+  const [filter, setFilter] = useState("");
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [noun, nouns] = GROUP_NOUN[groupKey];
+
+  const save = (o: string[], h: Set<string>) => setPref(groupKey, { order: o, hidden: [...h] });
+  /** Move `v` to index `to` of the full order. */
+  const moveTo = (v: string, to: number) => {
+    const rest = order.filter((x) => x !== v);
+    rest.splice(Math.max(0, Math.min(rest.length, to)), 0, v);
+    save(rest, hidden);
+  };
+  const toggle = (v: string, on: boolean) => {
+    const h = new Set(hidden);
+    if (on) h.delete(v);
+    else h.add(v);
+    save(order, h);
+  };
+  const q = filter.trim().toLowerCase();
+  const shown = q ? order.filter((v) => v.toLowerCase().includes(q)) : order;
+  const btn = "h-6 w-6 shrink-0 rounded text-white/75 hover:bg-white/15 hover:text-white disabled:opacity-25";
+
+  return (
+    <MoreOptions label={`Choose ${nouns}${pref ? ` · customised${hidden.size ? `, ${hidden.size} off` : ""}` : ""}`}>
+      <p className="text-[11px] leading-snug text-white/65">
+        Untick the {nouns} you don&apos;t want to group by, and drag (or use ↑ ↓) to rank them. Each game goes under its
+        highest-ranked {noun}, and groups appear on the shelves in this order.
+      </p>
+      <div className="flex gap-1.5">
+        <input
+          type="search"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={`Filter ${nouns}…`}
+          aria-label={`Filter ${nouns}`}
+          className="min-w-0 flex-1 rounded-md bg-white/10 px-2 py-1 text-xs text-white placeholder:text-white/55 outline-none focus:ring-2 focus:ring-amber-400"
+        />
+        {pref && (
+          <button
+            type="button"
+            onClick={() => setPref(groupKey, null)}
+            className="shrink-0 rounded-md px-2 text-xs text-amber-300 hover:underline"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+      <ol aria-label={`${nouns} in rank order`} className="max-h-72 space-y-0.5 overflow-y-auto pr-1 text-xs">
+        {shown.map((v) => {
+          const i = order.indexOf(v);
+          const on = !hidden.has(v);
+          return (
+            <li
+              key={v}
+              draggable
+              onDragStart={(e) => {
+                setDragging(v);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragging && dragging !== v)
+                  moveTo(
+                    dragging,
+                    order.filter((x) => x !== dragging).indexOf(v) + (order.indexOf(dragging) < i ? 1 : 0),
+                  );
+                setDragging(null);
+              }}
+              onDragEnd={() => setDragging(null)}
+              className={`flex items-center gap-1.5 rounded-md px-1 py-0.5 ${dragging === v ? "bg-white/15" : "hover:bg-white/5"}`}
+            >
+              <span aria-hidden className="cursor-grab select-none text-white/45">
+                ⋮⋮
+              </span>
+              <span className="w-5 shrink-0 text-right tabular-nums text-white/55">{i + 1}</span>
+              <label
+                className={`flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 ${on ? "text-white" : "text-white/55 line-through"}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={(e) => toggle(v, e.target.checked)}
+                  className="accent-amber-400"
+                />
+                <span className="truncate">{v}</span>
+              </label>
+              <span className="shrink-0 tabular-nums text-white/55" aria-label={`${countOf.get(v)} games`}>
+                {countOf.get(v)}
+              </span>
+              <button
+                type="button"
+                className={btn}
+                disabled={i === 0}
+                onClick={() => moveTo(v, i - 1)}
+                aria-label={`Move ${v} up`}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className={btn}
+                disabled={i === order.length - 1}
+                onClick={() => moveTo(v, i + 1)}
+                aria-label={`Move ${v} down`}
+              >
+                ↓
+              </button>
+            </li>
+          );
+        })}
+        {shown.length === 0 && <li className="px-1 py-1 text-white/55">No {nouns} match.</li>}
+      </ol>
+    </MoreOptions>
+  );
+}
+
+function SortingSection({ games }: { games: Game[] }) {
   const s = useStore();
+  const chooseable = GROUP_KEYS.filter((k) => k === s.areaBy || k === s.sortBy);
   return (
     <Section title="Sorting">
       <Field label="Areas" hint="Big sections of the shelves, e.g. wargames apart from family games.">
@@ -506,6 +678,9 @@ function SortingSection() {
           />
         </div>
       </Field>
+      {chooseable.map((k) => (
+        <GroupChooser key={k} games={games} groupKey={k} />
+      ))}
       {s.mode === "manual" && (
         <div className="text-[11px] leading-snug text-white/65">
           In manual mode the order sets how the piles on the floor are laid out, before you move anything.
@@ -955,7 +1130,7 @@ export function Sidebar({ games, sorted, layout }: { games: Game[]; sorted: Sort
       <CollectionSection games={games} />
       {games.length > 0 && <StatsSection layout={layout} sorted={sorted} />}
       <ShelvesSection />
-      <SortingSection />
+      <SortingSection games={games} />
       <PlacementSection />
       <LookSection />
       <footer className="space-y-1 px-4 py-4 text-center text-[11px] text-white/65">

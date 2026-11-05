@@ -1,16 +1,13 @@
 /** Box dimensions in centimetres, sorted so that a >= b >= c (c is the thickness). */
 export type Dims = [number, number, number];
 
-export type DimsSource =
-  | "selected-version"
-  | "latest-version"
-  | "default"
-  | "chosen-version"
-  | "custom";
+export type DimsSource = "selected-version" | "latest-version" | "default" | "chosen-version" | "custom";
 
 export interface Game {
   /** BGG collection id (unique per copy in the collection). */
   collId: number;
+  /** The user's per-game choice of theme / mechanic group (from their edits). */
+  groups?: GameOverride["groups"];
   /** BGG thing id. */
   id: number;
   name: string;
@@ -87,6 +84,8 @@ export interface SearchResult {
 
 /** The user's changes to one game. */
 export interface GameOverride {
+  /** Which theme / mechanic the game is grouped under, instead of the automatic choice. */
+  groups?: Partial<Record<"theme" | "mechanic", string>>;
   versionId?: number;
   versionName?: string;
   dims?: Dims;

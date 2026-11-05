@@ -107,6 +107,66 @@ const themeOf = (g: Game) => {
   return themes.length ? themes : g.categories.filter((c) => c !== "Expansion for Base-game");
 };
 
+// ----- user-chosen theme / mechanic groups -----
+
+/** Attributes where a game has several values and the user can choose which one it's grouped under. */
+export type GroupKey = "theme" | "mechanic";
+export const GROUP_KEYS: GroupKey[] = ["theme", "mechanic"];
+export const isGroupKey = (k: string): k is GroupKey => (GROUP_KEYS as string[]).includes(k);
+
+/** The user's say over a GroupKey: values ranked best first, and values never to group by. */
+export interface GroupPref {
+  order: string[];
+  hidden: string[];
+}
+export type GroupPrefs = Partial<Record<GroupKey, GroupPref>>;
+
+export const groupValues: Record<GroupKey, (g: Game) => string[]> = {
+  theme: themeOf,
+  mechanic: (g) => g.mechanics,
+};
+
+/** Every value in the collection with how many games have it, most common first. */
+export function groupCounts(games: Game[], key: GroupKey): { value: string; count: number }[] {
+  const freq = new Map<string, number>();
+  for (const g of games) for (const v of new Set(groupValues[key](g))) freq.set(v, (freq.get(v) ?? 0) + 1);
+  return [...freq]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+}
+
+/** The values in the user's order: ranked ones first, then any new ones by how common they are. */
+export function rankedValues(counts: { value: string }[], pref: GroupPref | undefined): string[] {
+  if (!pref) return counts.map((c) => c.value);
+  const present = new Set(counts.map((c) => c.value));
+  const ranked = pref.order.filter((v) => present.has(v));
+  const seen = new Set(ranked);
+  return [...ranked, ...counts.map((c) => c.value).filter((v) => !seen.has(v))];
+}
+
+/**
+ * Which value a game is grouped under. A per-game choice wins; otherwise its highest-ranked value
+ * that isn't hidden (or, with no preferences, the value most common in the collection).
+ * Groups are ordered by rank when the user has ranked them, else alphabetically.
+ */
+function groupPicker(games: Game[], key: GroupKey, pref: GroupPref | undefined, empty: string) {
+  const values = groupValues[key];
+  const counts = groupCounts(games, key);
+  const rank = new Map(rankedValues(counts, pref).map((v, i) => [v, i]));
+  const hidden = new Set(pref?.hidden ?? []);
+  const auto = primaryPicker(games, values);
+  return (g: Game): Key => {
+    const vs = values(g);
+    const own = g.groups?.[key];
+    const usable = vs.filter((v) => !hidden.has(v));
+    const pick = own && vs.includes(own) ? own : pref ? usable.sort((a, b) => rank.get(a)! - rank.get(b)!)[0] : auto(g);
+    if (pick) return { group: pick, order: pref ? rank.get(pick)! : pick, tie: 0 };
+    // Every value hidden: "Other", just before games with none at all.
+    if (vs.length) return { group: "Other", order: pref ? 1e9 : NONE, tie: 0 };
+    return { group: empty, order: pref ? 1e9 + 1 : NONE, tie: 1 };
+  };
+}
+
 // ----- game type (BGG domain) -----
 
 const DOMAINS: [string, string][] = [
@@ -182,7 +242,7 @@ interface Key {
   tie: number;
 }
 
-function keyer(games: Game[], key: SortKey, colors: Record<string, string>): (g: Game) => Key {
+function keyer(games: Game[], key: SortKey, colors: Record<string, string>, prefs: GroupPrefs): (g: Game) => Key {
   const grouped = (pick: (g: Game) => string | undefined, empty: string) => (g: Game) => {
     const v = pick(g);
     return { group: v ?? empty, order: v ?? NONE, tie: 0 };
@@ -197,16 +257,22 @@ function keyer(games: Game[], key: SortKey, colors: Record<string, string>): (g:
     case "domain":
       return (g) => {
         const d = domainOf(g);
-        return { group: d ? DOMAIN_LABEL.get(d) ?? d : "Other", order: d ? DOMAIN_ORDER.get(d) ?? 50 : 99, tie: 0 };
+        return { group: d ? (DOMAIN_LABEL.get(d) ?? d) : "Other", order: d ? (DOMAIN_ORDER.get(d) ?? 50) : 99, tie: 0 };
       };
     case "theme":
-      return grouped(primaryPicker(games, themeOf), "No theme");
+      return groupPicker(games, "theme", prefs.theme, "No theme");
     case "mechanic":
-      return grouped(primaryPicker(games, (g) => g.mechanics), "No mechanic");
+      return groupPicker(games, "mechanic", prefs.mechanic, "No mechanic");
     case "designer":
-      return grouped(primaryPicker(games, (g) => g.designers), "Unknown designer");
+      return grouped(
+        primaryPicker(games, (g) => g.designers),
+        "Unknown designer",
+      );
     case "publisher":
-      return grouped(primaryPicker(games, (g) => g.publishers), "Unknown publisher");
+      return grouped(
+        primaryPicker(games, (g) => g.publishers),
+        "Unknown publisher",
+      );
     case "series":
       return grouped(primaryPicker(games, seriesOf), "Standalone");
     case "color":
@@ -253,6 +319,7 @@ export function sortGames(
   sortBy: SortKey,
   colors: Record<string, string>,
   reverse: { area?: boolean; sort?: boolean } = {},
+  prefs: GroupPrefs = {},
 ): SortedGame[] {
   const present = new Set(games.map((g) => g.id));
   const baseOf = (g: Game) => (g.isExpansion ? g.baseIds?.find((id) => present.has(id) && id !== g.id) : undefined);
@@ -264,8 +331,8 @@ export function sortGames(
     else followers.set(base, [...(followers.get(base) ?? []), g]);
   }
 
-  const areaKey = areaBy === "none" ? null : keyer(bases, areaBy, colors);
-  const groupKey = keyer(bases, sortBy, colors);
+  const areaKey = areaBy === "none" ? null : keyer(bases, areaBy, colors, prefs);
+  const groupKey = keyer(bases, sortBy, colors, prefs);
   const keyed = bases.map((game) => ({ game, area: areaKey?.(game), group: groupKey(game) }));
 
   const areaDir = reverse.area ? -1 : 1;
