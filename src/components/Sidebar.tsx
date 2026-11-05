@@ -92,9 +92,8 @@ function CollectionSection({ games }: { games: Game[] }) {
             {expansions > 0 && <span className="text-white/50"> · {expansions} expansions</span>}
           </div>
           <div className="mt-1 leading-relaxed text-white/50">
-            Box sizes: {sources["selected-version"] ?? 0} from your version, {sources["first-version"] ?? 0} from the
-            earliest version, {sources["other-version"] ?? 0} from another version, {sources.default ?? 0} default
-            30×21×7 cm
+            Box sizes: {sources["selected-version"] ?? 0} from your version, {sources["latest-version"] ?? 0} from the
+            latest version with a size, {sources.default ?? 0} default 30×21×7 cm
             {(sources["chosen-version"] ?? 0) + (sources.custom ?? 0) > 0 &&
               `, ${(sources["chosen-version"] ?? 0) + (sources.custom ?? 0)} set by you`}
             . Click a box to change its version or size.

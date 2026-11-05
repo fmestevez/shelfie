@@ -18,7 +18,7 @@ Enter a BGG username and Shelfie fetches the games you own, works out each box's
 
 - **Your real collection:** owned games from BGG, with box art used as textures.
 - **Box sizes:**
-  - the version you selected on BGG, otherwise the earliest-released version, otherwise any version that lists a size, otherwise 30 × 21 × 7 cm;
+  - the version you selected on BGG, otherwise the most recently released version that lists a size, otherwise 30 × 21 × 7 cm;
   - you can pick another version or type a custom size for any game.
 - **Shelves:** Kallax 5×5, 4×4, 2×4 and 1×4; Billy and Billy deep (with adjustable compartments). Any mix and count, in white, black-brown or oak.
 - **Custom shelves:** enter your own outer size, a grid of columns × rows, board thickness, plinth height and back panel; Shelfie shows the compartment size as you type.
@@ -39,6 +39,7 @@ Enter a BGG username and Shelfie fetches the games you own, works out each box's
   - **Auto:** Shelfie packs everything, with no physics;
   - **Manual:** every game starts in piles on the floor and you drag each box onto the shelves. A box slides into the compartment under the pointer until it meets the back or another box; R / T (or the card's buttons) turn it or stand it up. Positions are saved in the browser.
 - **Overflow:** stacked on top of the shelves, piled on the floor beside them, or both.
+- **Find a game:** search by name (press `/`); picking a result selects the game and flies the camera to it.
 - **Your edits:** remove games, or add games that aren't in your collection (BGG search).
 - **Rooms:** living room, brick loft, game café, white gallery and garden, each with its own lighting (evening lamp, factory window and pendants, string lights, gallery track spots, midday sun) and furniture, plants and decorations.
 - **Box faces:** box art on the covers and art with the title on every edge; switch art and titles on or off independently.

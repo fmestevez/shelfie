@@ -68,7 +68,10 @@ const primaryName = (names: X[] | undefined): string | undefined => {
   return str(p);
 };
 
-/** BGG version dims are inches; returns sorted cm triple, or undefined if incomplete. */
+/** No board game box is this long (cm); bigger means the size was entered in the wrong units. */
+const MAX_BOX_SIDE = 100;
+
+/** BGG version dims are inches; returns sorted cm triple, or undefined if incomplete or implausible. */
 function versionDims(v: X): Dims | undefined {
   const w = num(v.width);
   const l = num(v.length);
@@ -76,6 +79,8 @@ function versionDims(v: X): Dims | undefined {
   if (!w || !l || !d) return undefined;
   // Clamp obviously bad data (some versions list a 0.04" thick box).
   const cm = [w, l, d].map((x) => Math.max(1.5, Math.round(x * 2.54 * 10) / 10)).sort((a, b) => b - a);
+  // Some versions list millimetres as inches (a 425 cm Orléans); treat those as having no size.
+  if (cm[0] > MAX_BOX_SIDE) return undefined;
   return cm as Dims;
 }
 
@@ -140,8 +145,10 @@ export async function fetchThings(ids: number[]): Promise<ThingInfo[]> {
     const links: X[] = it.link ?? [];
     const of = (type: string) => links.filter((l) => l.type === type).map((l) => str(l.value)!);
     const versions = parseVersions(it);
-    const first = versions[0];
-    const withDims = versions.find((v) => v.dims);
+    // Newest release year first (unknown years last), then the newest BGG entry.
+    const latest = versions
+      .filter((v) => v.dims)
+      .sort((a, b) => (b.year ?? -Infinity) - (a.year ?? -Infinity) || b.id - a.id)[0];
     const ratings = it.statistics?.ratings;
     // Domain membership comes from the per-family ranks; best-ranked domain first.
     const ranks: X[] = [ratings?.ranks?.rank ?? []].flat();
@@ -166,8 +173,7 @@ export async function fetchThings(ids: number[]): Promise<ThingInfo[]> {
       rating: num(ratings?.average),
       minPlayers: num(it.minplayers),
       maxPlayers: num(it.maxplayers),
-      firstVersion: first ? { id: first.id, name: first.name, dims: first.dims } : undefined,
-      firstVersionWithDims: withDims ? { id: withDims.id, name: withDims.name, dims: withDims.dims! } : undefined,
+      latestVersionWithDims: latest ? { id: latest.id, name: latest.name, dims: latest.dims! } : undefined,
     };
   });
 }

@@ -26,24 +26,16 @@ function merge(item: CollectionItem, thing: ThingInfo | undefined): Game {
   let dimsSource: Game["dimsSource"] = "default";
   let versionName: string | undefined;
 
-  if (item.version) {
-    // The user picked a version in their collection.
+  if (item.version?.dims) {
+    // The user picked a version in their collection, and BGG knows its size.
     versionName = item.version.name;
-    if (item.version.dims) {
-      dims = item.version.dims;
-      dimsSource = "selected-version";
-    }
-  } else if (thing?.firstVersion) {
-    versionName = thing.firstVersion.name;
-    if (thing.firstVersion.dims) {
-      dims = thing.firstVersion.dims;
-      dimsSource = "first-version";
-    }
-  }
-  // Better a real box size from another printing than a generic default.
-  if (dimsSource === "default" && thing?.firstVersionWithDims) {
-    dims = thing.firstVersionWithDims.dims;
-    dimsSource = "other-version";
+    dims = item.version.dims;
+    dimsSource = "selected-version";
+  } else if (thing?.latestVersionWithDims) {
+    // Otherwise the newest printing with a known size: the box you'd most likely buy today.
+    versionName = thing.latestVersionWithDims.name;
+    dims = thing.latestVersionWithDims.dims;
+    dimsSource = "latest-version";
   }
 
   return {

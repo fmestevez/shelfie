@@ -11,6 +11,7 @@ import { applyShareLink } from "@/lib/share";
 import { editsOf, GAMES_VERSION, useStore } from "@/lib/store";
 import { Scene } from "./three/Scene";
 import { CameraPad } from "./CameraPad";
+import { FindGame } from "./FindGame";
 import { SelectedGame } from "./SelectedGame";
 import { Sidebar } from "./Sidebar";
 
@@ -99,6 +100,11 @@ function useLayout() {
 
 export default function App() {
   const { games, sorted, layout, bodies } = useLayout();
+  // Everything that's in the scene: where the packer put it, or the boxes physics and manual mode move around.
+  const findable = useMemo(
+    () => (bodies ? bodies.map((b) => ({ sg: b.sg })) : layout.placements.map((p) => ({ sg: p.sg, area: p.area }))),
+    [bodies, layout],
+  );
   const [open, setOpen] = useState(true);
 
   // Picking a version can change the box art; analyse any art we haven't seen.
@@ -131,6 +137,7 @@ export default function App() {
         >
           {open ? "Hide settings" : "Settings"}
         </button>
+        <FindGame games={findable} panelOpen={open} />
         <SelectedGame layout={layout} bodies={bodies} />
         <CameraPad />
       </main>

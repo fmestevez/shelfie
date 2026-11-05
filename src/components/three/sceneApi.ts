@@ -12,14 +12,20 @@ export interface SceneApi {
   zoom: (factor: number) => void;
   pan: (dx: number, dy: number) => void;
   fit: () => void;
+  /** Bring a game's box into view, keeping roughly the current viewing angle. */
+  focus: (collId: number) => void;
   exportImage: (mode: ExportMode) => string;
 }
 
 export const sceneApi: { current: SceneApi | null } = { current: null };
 
+/** The scene-graph name of a game's box mesh. */
+export const boxName = (collId: number) => `game-${collId}`;
+
 export const FOV = 40;
 const MIN_DIST = 30;
 const MAX_DIST = 2500;
+const FOCUS_DIST = 140; // cm from a found box: close enough to read its neighbours too
 export const MAX_POLAR = Math.PI / 2 - 0.03;
 
 /** Camera position and target that frame shelves `span` cm wide. */
@@ -102,6 +108,18 @@ export function createSceneApi(ctx: {
     fit() {
       const { position, target } = homeView(ctx.span, camera.aspect);
       moveTo(position, target);
+    },
+    focus(collId) {
+      const box = scene.getObjectByName(boxName(collId));
+      if (!box) return;
+      const at = box.getWorldPosition(new THREE.Vector3());
+      // Look from the front, slightly above, whatever odd angle the camera was at.
+      const dir = offset().normalize();
+      dir.set(dir.x, Math.max(dir.y, 0.15), Math.max(dir.z, 0.6)).normalize();
+      // On a portrait screen the game's card covers the top half: aim higher so the box shows below it.
+      const halfHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * FOCUS_DIST;
+      const target = at.clone().add(new THREE.Vector3(0, camera.aspect < 1 ? 0.45 * halfHeight : 0, 0));
+      moveTo(target.clone().add(dir.multiplyScalar(FOCUS_DIST)), target);
     },
     exportImage(mode) {
       if (mode === "view") {

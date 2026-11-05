@@ -10,6 +10,7 @@ import type { Cover, Placement } from "@/lib/packing";
 import type { SortedGame } from "@/lib/sorting";
 import { useStore } from "@/lib/store";
 import type { Game } from "@/lib/types";
+import { boxName } from "./sceneApi";
 import { coverTexture, orientCover, spineTexture, titleCover } from "./textures";
 
 const plainCache = new Map<string, THREE.MeshStandardMaterial>();
@@ -146,6 +147,8 @@ export const BoxMesh = memo(function BoxMesh({
 
   return (
     <mesh
+      // Named so the camera can find the box wherever it is (physics moves it).
+      name={boxName(game.collId)}
       position={position}
       material={materials}
       castShadow

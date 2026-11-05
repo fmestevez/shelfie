@@ -8,7 +8,7 @@ import type { AreaKey, SortKey } from "./sorting";
 import type { CollectionEdits, Game, GameOverride } from "./types";
 
 /** Bump when the shape of saved games changes, so old saves are refetched. */
-export const GAMES_VERSION = 2;
+export const GAMES_VERSION = 3;
 /** Bump when the colour analysis changes, so saved colours are recomputed. */
 export const COLORS_VERSION = 2;
 

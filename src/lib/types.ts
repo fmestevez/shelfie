@@ -3,8 +3,7 @@ export type Dims = [number, number, number];
 
 export type DimsSource =
   | "selected-version"
-  | "first-version"
-  | "other-version"
+  | "latest-version"
   | "default"
   | "chosen-version"
   | "custom";
@@ -65,8 +64,8 @@ export interface ThingInfo {
   rating?: number;
   minPlayers?: number;
   maxPlayers?: number;
-  firstVersion?: { id: number; name?: string; dims?: Dims };
-  firstVersionWithDims?: { id: number; name?: string; dims: Dims };
+  /** The most recently released version that lists a box size. */
+  latestVersionWithDims?: { id: number; name?: string; dims: Dims };
 }
 
 /** A published version (edition) of a game, as listed by BGG. */

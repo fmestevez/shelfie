@@ -10,8 +10,7 @@ import type { Dims, DimsSource, Game, VersionInfo } from "@/lib/types";
 
 const SOURCE_LABEL: Record<DimsSource, string> = {
   "selected-version": "your selected version",
-  "first-version": "the earliest version",
-  "other-version": "another version (earliest had no size)",
+  "latest-version": "the latest version with a size",
   default: "default size (no version data)",
   "chosen-version": "the version you picked",
   custom: "your custom size",
