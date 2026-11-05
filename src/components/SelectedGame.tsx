@@ -146,7 +146,7 @@ export function SelectedGame({ layout }: { layout: Layout }) {
   const { game, area, group } = p.sg;
 
   return (
-    <div className="pointer-events-auto absolute bottom-4 right-4 w-[min(340px,calc(100vw-2rem))] overflow-hidden rounded-xl bg-neutral-900/90 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur">
+    <div className="pointer-events-auto absolute right-4 top-14 z-10 md:top-4 max-h-[calc(100%-9.5rem)] w-[min(340px,calc(100vw-2rem))] overflow-y-auto rounded-xl bg-neutral-900/90 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur">
       <div className="flex gap-3 p-3">
         {game.thumbnail && (
           // eslint-disable-next-line @next/next/no-img-element -- proxied remote art, tiny

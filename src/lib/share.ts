@@ -22,6 +22,8 @@ const SETTINGS = [
   "overhang",
   "includeExpansions",
   "environment",
+  "showArt",
+  "showTitles",
 ] as const;
 
 type Settings = Partial<Pick<ReturnType<typeof useStore.getState>, (typeof SETTINGS)[number]>>;

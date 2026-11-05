@@ -40,6 +40,8 @@ interface State extends Omit<LayoutConfig, "shelves" | "keepOrder"> {
   includeExpansions: boolean;
   environment: EnvironmentId;
   hdTextures: boolean;
+  showArt: boolean;
+  showTitles: boolean;
 
   hoveredId: number | null;
   selectedId: number | null;
@@ -84,6 +86,8 @@ export const useStore = create<State>()(
       includeExpansions: true,
       environment: "living-room",
       hdTextures: true,
+      showArt: true,
+      showTitles: true,
 
       hoveredId: null,
       selectedId: null,

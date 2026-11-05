@@ -36,14 +36,21 @@ function fitText(ctx: CanvasRenderingContext2D, text: string, maxW: number, maxP
 const spineCache = new Map<string, THREE.Texture>();
 
 /**
- * Title strip for the visible edge, drawn at the face's real proportions so text
- * isn't stretched. `vertical` = text runs top-to-bottom. With `art`, a band of the
- * box art sits behind the title, like a printed spine.
+ * Spine for the visible edge, drawn at the face's real proportions so text isn't
+ * stretched; text runs top-to-bottom on upright boxes. With `art`, a band of the box
+ * art fills the spine; with `title`, the game's name is printed on it.
  */
-export function spineTexture(game: Game, color: string, faceW: number, faceH: number, art?: HTMLCanvasElement) {
+export function spineTexture(
+  game: Game,
+  color: string,
+  faceW: number,
+  faceH: number,
+  art: HTMLCanvasElement | undefined,
+  title: boolean,
+) {
   const vertical = faceH > faceW;
   const aspect = Math.round((Math.max(faceW, faceH) / Math.max(0.1, Math.min(faceW, faceH))) * 4) / 4;
-  const key = `${game.collId}|${color}|${vertical}|${aspect}|${art ? 1 : 0}`;
+  const key = `${game.collId}|${color}|${vertical}|${aspect}|${art ? 1 : 0}|${title}`;
   let tex = spineCache.get(key);
   if (tex) return tex;
 
@@ -62,22 +69,26 @@ export function spineTexture(game: Game, color: string, faceW: number, faceH: nu
     // A horizontal band through the middle of the cover, scaled to fill the strip.
     const bandH = Math.min(art.height, (art.width * S) / L);
     ctx.drawImage(art, 0, (art.height - bandH) / 2, art.width, bandH, -L / 2, -S / 2, L, S);
-    ctx.fillStyle = "rgba(0,0,0,0.38)";
-    ctx.fillRect(-L / 2, -S / 2, L, S);
+    if (title) {
+      ctx.fillStyle = "rgba(0,0,0,0.38)"; // keeps the title readable
+      ctx.fillRect(-L / 2, -S / 2, L, S);
+    }
   }
   // subtle bands at both ends, like printed spines
   ctx.fillStyle = "rgba(0,0,0,0.18)";
   ctx.fillRect(-L / 2, -S / 2, 10, S);
   ctx.fillRect(L / 2 - 10, -S / 2, 10, S);
-  ctx.fillStyle = art ? "#fff" : textColorFor(color);
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  fitText(ctx, game.name, L - 36, Math.min(26, S * 0.62));
-  if (art) {
-    ctx.shadowColor = "rgba(0,0,0,0.8)";
-    ctx.shadowBlur = 4;
+  if (title) {
+    ctx.fillStyle = art ? "#fff" : textColorFor(color);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    fitText(ctx, game.name, L - 36, Math.min(26, S * 0.62));
+    if (art) {
+      ctx.shadowColor = "rgba(0,0,0,0.8)";
+      ctx.shadowBlur = 4;
+    }
+    ctx.fillText(game.name, 0, 1);
   }
-  ctx.fillText(game.name, 0, 1);
 
   tex = finish(c);
   spineCache.set(key, tex);
@@ -126,6 +137,18 @@ function generatedCover(game: Game, color: string) {
     ctx.fillText(l, 128, 128 + (i - (lines.length - 1) / 2) * 34);
   });
   return c;
+}
+
+const titleCoverCache = new Map<string, THREE.Texture>();
+/** A cover with just the title on the box colour (for when art is switched off). */
+export function titleCover(game: Game, color: string) {
+  const key = `${game.collId}|${color}`;
+  let t = titleCoverCache.get(key);
+  if (!t) {
+    t = finish(generatedCover(game, color));
+    titleCoverCache.set(key, t);
+  }
+  return t;
 }
 
 /** Box art as a texture, downscaled to `maxSize` to keep GPU memory in check. */

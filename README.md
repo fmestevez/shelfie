@@ -28,6 +28,9 @@ Enter a BGG username and Shelfie fetches the games you own, works out each box's
 - **Overflow:** stacked on top of the shelves, piled on the floor beside them, or both.
 - **Your edits:** remove games, or add games that aren't in your collection (BGG search).
 - **Rooms:** living room, brick loft, game café, white gallery, garden.
+- **Box faces:** switch box art and titles on or off independently.
+- **Camera:** drag to orbit and scroll to zoom, or use the on-screen pad (orbit, tilt, zoom, pan, fit), which works on phones too.
+- **Image export:** the current view at 2× resolution, or the whole collection framed front-on (up to 4096 px).
 - **Share links:** one link carries the collection, every setting and your edits.
 
 ## Running locally

@@ -9,6 +9,7 @@ import { applyEdits } from "@/lib/edits";
 import { applyShareLink } from "@/lib/share";
 import { editsOf, GAMES_VERSION, useStore } from "@/lib/store";
 import { Scene } from "./three/Scene";
+import { CameraPad } from "./CameraPad";
 import { SelectedGame } from "./SelectedGame";
 import { Sidebar } from "./Sidebar";
 
@@ -110,14 +111,8 @@ export default function App() {
         >
           {open ? "Hide settings" : "Settings"}
         </button>
-        {games.length === 0 && (
-          <div className="pointer-events-none absolute inset-x-0 top-6 flex justify-center">
-            <div className="rounded-full bg-black/60 px-4 py-2 text-sm text-white/90 shadow">
-              Enter your BoardGameGeek username to fill the shelves
-            </div>
-          </div>
-        )}
         <SelectedGame layout={layout} />
+        <CameraPad />
       </main>
     </div>
   );

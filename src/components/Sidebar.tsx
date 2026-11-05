@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { addGameFromBgg, loadCollection, loadDemo } from "@/lib/loadCollection";
 import { shareUrl } from "@/lib/share";
+import { type ExportMode, sceneApi } from "./three/sceneApi";
 import type { Layout, Orientation, OverflowMode } from "@/lib/packing";
 import { SHELF_MODELS } from "@/lib/shelves";
 import { AREA_OPTIONS, type AreaKey, SORT_OPTIONS, type SortKey } from "@/lib/sorting";
@@ -104,7 +105,11 @@ function CollectionSection({ games }: { games: Game[] }) {
         checked={s.includeExpansions}
         onChange={(v) => s.set({ includeExpansions: v })}
       />
-      <Toggle label="High-res box art" checked={s.hdTextures} onChange={(v) => s.set({ hdTextures: v })} />
+      <Toggle label="Box art on boxes" checked={s.showArt} onChange={(v) => s.set({ showArt: v })} />
+      <Toggle label="Titles on boxes" checked={s.showTitles} onChange={(v) => s.set({ showTitles: v })} />
+      {s.showArt && (
+        <Toggle label="High-res box art" checked={s.hdTextures} onChange={(v) => s.set({ hdTextures: v })} />
+      )}
     </Section>
   );
 }
@@ -556,15 +561,75 @@ function ShareButton() {
   );
 }
 
+function ExportButton() {
+  const [open, setOpen] = useState(false);
+  const username = useStore((s) => s.username);
+
+  const download = (mode: ExportMode) => {
+    setOpen(false);
+    const url = sceneApi.current?.exportImage(mode);
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `shelfie-${username || "collection"}-${mode === "all" ? "collection" : "view"}.png`;
+    a.click();
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((o) => !o)}
+        className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/20"
+      >
+        Image
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg bg-neutral-800 text-xs shadow-xl ring-1 ring-white/10"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => download("view")}
+            className="block w-full px-3 py-2 text-left text-white hover:bg-white/10"
+          >
+            Current view
+            <span className="block text-[10px] text-white/45">What you see, at 2× resolution</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => download("all")}
+            className="block w-full px-3 py-2 text-left text-white hover:bg-white/10"
+          >
+            Whole collection
+            <span className="block text-[10px] text-white/45">Every shelf and pile, front-on</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar({ games, layout }: { games: Game[]; layout: Layout }) {
   return (
     <>
       <div className="px-4 pb-2 pt-5">
         <div className="flex items-start justify-between gap-2">
-          <h1 className="text-xl font-bold tracking-tight text-white">
+          {/* Not an h1: the page's heading is the server-rendered intro. */}
+          <div className="text-xl font-bold tracking-tight text-white">
             Shelf<span className="text-amber-400">ie</span>
-          </h1>
-          {games.length > 0 && <ShareButton />}
+          </div>
+          {games.length > 0 && (
+            <div className="flex items-start gap-1.5">
+              <ExportButton />
+              <ShareButton />
+            </div>
+          )}
         </div>
         <p className="text-xs text-white/50">Your BoardGameGeek collection, packed onto real shelves.</p>
       </div>

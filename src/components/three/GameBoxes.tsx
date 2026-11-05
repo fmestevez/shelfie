@@ -8,7 +8,7 @@ import { colorKey } from "@/lib/images";
 import { fallbackColor } from "@/lib/loadCollection";
 import type { Placement } from "@/lib/packing";
 import { useStore } from "@/lib/store";
-import { coverTexture, orientCover, spineTexture } from "./textures";
+import { coverTexture, orientCover, spineTexture, titleCover } from "./textures";
 
 const plainCache = new Map<string, THREE.MeshStandardMaterial>();
 const plain = (color: string) => {
@@ -33,7 +33,16 @@ const textured = (map: THREE.Texture) => {
 // BoxGeometry material order: +x, -x, +y, -y, +z, -z
 const FACE = { "+x": 0, "-x": 1, "+y": 2 } as const;
 
-const GameBox = memo(function GameBox({ p, color, hd, maxTex }: { p: Placement; color: string; hd: boolean; maxTex: number }) {
+interface BoxProps {
+  p: Placement;
+  color: string;
+  hd: boolean;
+  maxTex: number;
+  showArt: boolean;
+  showTitles: boolean;
+}
+
+const GameBox = memo(function GameBox({ p, color, hd, maxTex, showArt, showTitles }: BoxProps) {
   const { game } = p.sg;
   const [X, Y, Z] = p.size;
   const [cover, setCover] = useState<THREE.Texture | null>(null);
@@ -41,6 +50,8 @@ const GameBox = memo(function GameBox({ p, color, hd, maxTex }: { p: Placement; 
   const set = useStore((s) => s.set);
 
   useEffect(() => {
+    // With art off, don't download it at all.
+    if (!showArt) return;
     let alive = true;
     coverTexture(game, color, hd, maxTex).then((t) => {
       if (alive) {
@@ -51,20 +62,23 @@ const GameBox = memo(function GameBox({ p, color, hd, maxTex }: { p: Placement; 
     return () => {
       alive = false;
     };
-  }, [game, color, hd, maxTex, invalidate]);
+  }, [game, color, hd, maxTex, invalidate, showArt]);
 
   const materials = useMemo(() => {
     const side = plain(color);
     const mats: THREE.Material[] = [side, side, side, side, side, side];
     // Front (+z) shows the spine; text runs along the longer edge.
-    const art = cover && !(cover.userData.generated as boolean) ? (cover.image as HTMLCanvasElement) : undefined;
-    mats[4] = textured(spineTexture(game, color, X, Y, art));
-    if (cover) {
+    const realArt = showArt && cover && !(cover.userData.generated as boolean) ? cover : null;
+    const art = realArt ? (realArt.image as HTMLCanvasElement) : undefined;
+    if (art || showTitles) mats[4] = textured(spineTexture(game, color, X, Y, art, showTitles));
+    // The cover face: box art, else the title on the box colour, else plain.
+    const front = realArt ?? (showTitles ? titleCover(game, color) : null);
+    if (front) {
       const [u, v] = p.cover === "+y" ? [X, Z] : [Z, Y];
-      mats[FACE[p.cover]] = textured(orientCover(cover, u, v));
+      mats[FACE[p.cover]] = textured(orientCover(front, u, v));
     }
     return mats;
-  }, [game, color, cover, p.cover, X, Y, Z]);
+  }, [game, color, cover, p.cover, X, Y, Z, showArt, showTitles]);
 
   const onOver = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
@@ -96,6 +110,8 @@ const GameBox = memo(function GameBox({ p, color, hd, maxTex }: { p: Placement; 
 export function GameBoxes({ placements }: { placements: Placement[] }) {
   const colors = useStore((s) => s.colors);
   const hd = useStore((s) => s.hdTextures);
+  const showArt = useStore((s) => s.showArt);
+  const showTitles = useStore((s) => s.showTitles);
   const hoveredId = useStore((s) => s.hoveredId);
   const selectedId = useStore((s) => s.selectedId);
   // Keep GPU memory reasonable for big collections.
@@ -112,10 +128,12 @@ export function GameBoxes({ placements }: { placements: Placement[] }) {
           color={colors[colorKey(p.sg.game)] ?? fallbackColor(p.sg.game.id)}
           hd={hd}
           maxTex={maxTex}
+          showArt={showArt}
+          showTitles={showTitles}
         />
       ))}
       {highlight && (
-        <group position={highlight.center}>
+        <group name="highlight" position={highlight.center}>
           <mesh raycast={() => null}>
             <boxGeometry args={highlight.size.map((s) => s + 0.6) as [number, number, number]} />
             <meshBasicMaterial color="#ffd54a" transparent opacity={0.25} depthWrite={false} />
