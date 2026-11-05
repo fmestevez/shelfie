@@ -538,6 +538,19 @@ function GroupChooser({ games, groupKey }: { games: Game[]; groupKey: GroupKey }
   };
   const q = filter.trim().toLowerCase();
   const shown = q ? order.filter((v) => v.toLowerCase().includes(q)) : order;
+  /** Tick or untick everything listed (just the filtered values while filtering). */
+  const setAll = (on: boolean) => {
+    const h = new Set(hidden);
+    for (const v of shown) {
+      if (on) h.delete(v);
+      else h.add(v);
+    }
+    save(order, h);
+  };
+  const allOn = shown.every((v) => !hidden.has(v));
+  const allOff = shown.every((v) => hidden.has(v));
+  const which = q ? "shown" : "";
+  const link = "rounded px-1 text-amber-300 hover:underline disabled:text-white/40 disabled:no-underline";
   const btn = "h-6 w-6 shrink-0 rounded text-white/75 hover:bg-white/15 hover:text-white disabled:opacity-25";
 
   return (
@@ -564,6 +577,14 @@ function GroupChooser({ games, groupKey }: { games: Game[]; groupKey: GroupKey }
             Reset
           </button>
         )}
+      </div>
+      <div className="flex gap-3 text-xs">
+        <button type="button" className={link} disabled={allOn || !shown.length} onClick={() => setAll(true)}>
+          Select all {which}
+        </button>
+        <button type="button" className={link} disabled={allOff || !shown.length} onClick={() => setAll(false)}>
+          Unselect all {which}
+        </button>
       </div>
       <ol aria-label={`${nouns} in rank order`} className="max-h-72 space-y-0.5 overflow-y-auto pr-1 text-xs">
         {shown.map((v) => {
