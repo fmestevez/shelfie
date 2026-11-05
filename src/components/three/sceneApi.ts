@@ -55,6 +55,13 @@ export function createSceneApi(ctx: {
   let raf = 0;
   const moveTo = (position: THREE.Vector3, target: THREE.Vector3) => {
     cancelAnimationFrame(raf);
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      camera.position.copy(position);
+      controls.target.copy(target);
+      controls.update();
+      invalidate();
+      return;
+    }
     const p0 = camera.position.clone();
     const t0 = controls.target.clone();
     const start = performance.now();

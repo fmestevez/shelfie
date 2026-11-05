@@ -74,7 +74,7 @@ function SizeEditor({ game }: { game: Game }) {
     <div className="space-y-2 border-t border-white/10 px-3 py-3 text-xs">
       {game.id > 0 && (
         <label className="block">
-          <span className="mb-1 block text-white/50">Version</span>
+          <span className="mb-1 block text-white/65">Version</span>
           <select
             value={override?.versionId ?? ""}
             onChange={(e) => pickVersion(e.target.value)}
@@ -100,7 +100,7 @@ function SizeEditor({ game }: { game: Game }) {
           setDraft(sorted.map(String));
         }}
       >
-        <span className="mb-1 block text-white/50">Box size (cm)</span>
+        <span className="mb-1 block text-white/65">Box size (cm)</span>
         <div className="flex items-center gap-1.5">
           {draft.map((v, i) => (
             <input
@@ -152,7 +152,7 @@ function RotateButtons({ collId }: { collId: number }) {
           ⤾ Stand up / lay down
         </button>
       </div>
-      <div className="mt-1.5 text-[11px] text-white/40">
+      <div className="mt-1.5 text-[11px] text-white/65">
         Drag the box to move it. R and T rotate it while you hold it.
       </div>
     </div>
@@ -166,69 +166,91 @@ export function SelectedGame({ layout, bodies }: { layout: Layout; bodies: BodyS
   const placement = layout.placements.find((x) => x.sg.game.collId === selectedId);
   // With bodies, boxes go wherever they're moved: the packed position no longer applies.
   const sg = bodies ? bodies.find((b) => b.sg.game.collId === selectedId)?.sg : placement?.sg;
-  if (!sg) return null;
+  // Clicking a box in the 3D view is silent otherwise; say what got selected.
+  const announcement = (
+    <div className="sr-only" aria-live="polite">
+      {sg ? `${sg.game.name} selected` : ""}
+    </div>
+  );
+  if (!sg) return announcement;
   const p = bodies ? null : placement;
   const { game, area, group } = sg;
 
   return (
-    <div className="pointer-events-auto absolute right-4 top-14 z-10 md:top-4 max-h-[calc(100%-9.5rem)] w-[min(340px,calc(100vw-2rem))] overflow-y-auto rounded-xl bg-neutral-900/90 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur">
-      <div className="flex gap-3 p-3">
-        {game.thumbnail && (
-          // eslint-disable-next-line @next/next/no-img-element -- proxied remote art, tiny
-          <img src={proxied(game.thumbnail)} alt="" className="h-20 w-20 shrink-0 rounded-md object-cover" />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold leading-tight">{game.name}</h3>
-            <button
-              type="button"
-              onClick={() => set({ selectedId: null })}
-              className="text-white/50 hover:text-white"
-              aria-label="Close"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="mt-0.5 text-xs text-white/50">
-            {[game.year, game.isExpansion && "Expansion", game.collId < 0 && game.id > 0 && "Added by you", area, group]
-              .filter(Boolean)
-              .join(" · ")}
-          </div>
-          <div className="mt-2 text-xs text-white/80">
-            {fmt(game.dims)} cm
-            <div className="text-white/45">
-              from {SOURCE_LABEL[game.dimsSource]}
-              {game.versionName &&
-                game.dimsSource !== "default" &&
-                game.dimsSource !== "custom" &&
-                ` (${game.versionName})`}
+    <>
+      {announcement}
+      <section
+        aria-label={`${game.name}: details`}
+        className="pointer-events-auto absolute right-4 top-14 z-10 md:top-4 max-h-[calc(100%-9.5rem)] w-[min(340px,calc(100vw-2rem))] overflow-y-auto rounded-xl bg-neutral-900/90 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur"
+      >
+        <div className="flex gap-3 p-3">
+          {game.thumbnail && (
+            // eslint-disable-next-line @next/next/no-img-element -- proxied remote art, tiny
+            <img src={proxied(game.thumbnail)} alt="" className="h-20 w-20 shrink-0 rounded-md object-cover" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <h2 className="font-semibold leading-tight">{game.name}</h2>
+              <button
+                type="button"
+                onClick={() => set({ selectedId: null })}
+                className="text-white/65 hover:text-white"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="mt-0.5 text-xs text-white/65">
+              {[
+                game.year,
+                game.isExpansion && "Expansion",
+                game.collId < 0 && game.id > 0 && "Added by you",
+                area,
+                group,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
+            <div className="mt-2 text-xs text-white/80">
+              {fmt(game.dims)} cm
+              <div className="text-white/65">
+                from {SOURCE_LABEL[game.dimsSource]}
+                {game.versionName &&
+                  game.dimsSource !== "default" &&
+                  game.dimsSource !== "custom" &&
+                  ` (${game.versionName})`}
+              </div>
+            </div>
+            <div className="mt-2 flex items-center justify-between text-xs">
+              <span className="text-white/65">
+                {p && AREA_LABEL[p.area]}
+                {p?.hidden && " · back row"}
+              </span>
+              {game.id > 0 && (
+                <a
+                  href={`https://boardgamegeek.com/boardgame/${game.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-amber-300 hover:underline"
+                >
+                  BGG ↗
+                </a>
+              )}
             </div>
           </div>
-          <div className="mt-2 flex items-center justify-between text-xs">
-            <span className="text-white/50">
-              {p && AREA_LABEL[p.area]}
-              {p?.hidden && " · back row"}
-            </span>
-            {game.id > 0 && (
-              <a
-                href={`https://boardgamegeek.com/boardgame/${game.id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="text-amber-300 hover:underline"
-              >
-                BGG ↗
-              </a>
-            )}
-          </div>
         </div>
-      </div>
-      {bodies && <RotateButtons collId={game.collId} />}
-      <SizeEditor key={game.collId} game={game} />
-      <div className="border-t border-white/10 px-3 py-2">
-        <button type="button" onClick={() => removeGame(game.collId)} className="text-xs text-red-300 hover:underline">
-          Remove from shelves
-        </button>
-      </div>
-    </div>
+        {bodies && <RotateButtons collId={game.collId} />}
+        <SizeEditor key={game.collId} game={game} />
+        <div className="border-t border-white/10 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => removeGame(game.collId)}
+            className="text-xs text-red-300 hover:underline"
+          >
+            Remove from shelves
+          </button>
+        </div>
+      </section>
+    </>
   );
 }

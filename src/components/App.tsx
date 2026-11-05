@@ -15,6 +15,17 @@ import { FindGame } from "./FindGame";
 import { SelectedGame } from "./SelectedGame";
 import { Sidebar } from "./Sidebar";
 
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const m = window.matchMedia(query);
+    const onChange = () => setMatches(m.matches);
+    m.addEventListener("change", onChange);
+    return () => m.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
 function useLayout() {
   const s = useStore(
     useShallow((s) => ({
@@ -106,6 +117,7 @@ export default function App() {
     [bodies, layout],
   );
   const [open, setOpen] = useState(true);
+  const wide = useMediaQuery("(min-width: 768px)");
 
   // Picking a version can change the box art; analyse any art we haven't seen.
   useEffect(() => {
@@ -122,6 +134,10 @@ export default function App() {
   return (
     <div className="relative flex h-dvh w-full overflow-hidden bg-neutral-950">
       <aside
+        id="settings-panel"
+        aria-label="Settings"
+        // Off-screen on phones when closed: keep it out of the tab order too.
+        inert={!open && !wide}
         className={`absolute inset-y-0 left-0 z-10 w-80 max-w-[85vw] overflow-y-auto bg-neutral-900/92 backdrop-blur transition-transform md:relative md:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
@@ -129,9 +145,17 @@ export default function App() {
         <Sidebar games={games} sorted={sorted} layout={layout} />
       </aside>
       <main className="relative min-w-0 flex-1">
-        <Scene layout={layout} bodies={bodies} />
+        <div
+          role="img"
+          aria-label={`3D view of ${findable.length} games on your shelves. Use “Find a game” to select one.`}
+          className="absolute inset-0"
+        >
+          <Scene layout={layout} bodies={bodies} />
+        </div>
         <button
           type="button"
+          aria-expanded={open}
+          aria-controls="settings-panel"
           onClick={() => setOpen((o) => !o)}
           className="absolute left-3 top-3 z-20 rounded-lg bg-neutral-900/80 px-3 py-1.5 text-xs text-white shadow md:hidden"
         >

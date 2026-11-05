@@ -83,6 +83,7 @@ export function FindGame({
         placeholder="Find a game…  /"
         aria-label="Find a game on the shelves"
         role="combobox"
+        aria-autocomplete="list"
         aria-expanded={showList}
         aria-controls="find-game-results"
         aria-activedescendant={showList && results[active] ? `find-game-${active}` : undefined}
@@ -104,15 +105,22 @@ export function FindGame({
           } else return;
           e.preventDefault();
         }}
-        className="w-full rounded-lg bg-neutral-900/85 px-3 py-2 text-sm text-white shadow-lg ring-1 ring-white/10 backdrop-blur outline-none placeholder:text-white/40 focus:ring-2 focus:ring-amber-400"
+        className="w-full rounded-lg bg-neutral-900/85 px-3 py-2 text-sm text-white shadow-lg ring-1 ring-white/10 backdrop-blur outline-none placeholder:text-white/55 focus:ring-2 focus:ring-amber-400"
       />
+      <div className="sr-only" aria-live="polite">
+        {showList ? `${results.length} ${results.length === 1 ? "game" : "games"} found` : ""}
+      </div>
       {showList && (
         <ul
           id="find-game-results"
           role="listbox"
           className="mt-1 max-h-80 overflow-y-auto rounded-lg bg-neutral-900/95 py-1 text-sm shadow-2xl ring-1 ring-white/10 backdrop-blur"
         >
-          {results.length === 0 && <li className="px-3 py-2 text-xs text-white/50">No game by that name here.</li>}
+          {results.length === 0 && (
+            <li role="option" aria-disabled="true" aria-selected="false" className="px-3 py-2 text-xs text-white/65">
+              No game by that name here.
+            </li>
+          )}
           {results.map((g, i) => (
             <li
               key={g.sg.game.collId}
@@ -125,7 +133,7 @@ export function FindGame({
               className={`cursor-pointer px-3 py-1.5 ${i === active ? "bg-white/10" : ""}`}
             >
               <div className="truncate text-white">{g.sg.game.name}</div>
-              <div className="truncate text-[11px] text-white/45">
+              <div className="truncate text-[11px] text-white/65">
                 {[g.sg.game.year, g.sg.group, g.area && AREA_LABEL[g.area]].filter(Boolean).join(" · ")}
               </div>
             </li>

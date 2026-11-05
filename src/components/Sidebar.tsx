@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { addGameFromBgg, loadCollection, loadDemo } from "@/lib/loadCollection";
 import { shareUrl } from "@/lib/share";
 import { REPO_URL } from "@/lib/site";
@@ -13,10 +13,16 @@ import { editsOf, type EnvironmentId, type Mode, useStore } from "@/lib/store";
 import type { Game, SearchResult } from "@/lib/types";
 import { Credit } from "./Credit";
 import { ENVIRONMENTS } from "./three/Room";
-import { Field, MoreOptions, Section, Segmented, SortDirection, Stepper, Toggle } from "./ui";
+import { Field, MoreOptions, Range, Section, Segmented, Select, SortDirection, Stepper, Toggle } from "./ui";
 
 const MAX_LOOKAHEAD = 40;
 const MIN_OVERHANG = -40; // deeper than any shelf: everything against the back
+
+function lookLabel(look: number) {
+  if (look === 0) return "strict order";
+  if (look >= MAX_LOOKAHEAD) return "pack as tight as possible";
+  return `may skip ${look} games to fill gaps`;
+}
 
 function overhangLabel(cm: number) {
   if (cm <= MIN_OVERHANG) return "against the back";
@@ -49,7 +55,9 @@ function CollectionSection({ games }: { games: Game[] }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="BoardGameGeek username"
-          className="min-w-0 flex-1 rounded-lg bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-amber-400"
+          aria-label="BoardGameGeek username"
+          autoComplete="username"
+          className="min-w-0 flex-1 rounded-lg bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/55 outline-none focus:ring-2 focus:ring-amber-400"
         />
         <button
           type="submit"
@@ -71,11 +79,18 @@ function CollectionSection({ games }: { games: Game[] }) {
 
       {s.progress && (
         <div>
-          <div className="mb-1 text-xs text-white/70">
+          <div className="mb-1 text-xs text-white/75" aria-live="polite">
             {s.progress.message}
             {s.progress.total > 0 && ` · ${s.progress.done}/${s.progress.total}`}
           </div>
-          <div className="h-1.5 overflow-hidden rounded bg-white/10">
+          <div
+            className="h-1.5 overflow-hidden rounded bg-white/10"
+            role="progressbar"
+            aria-label={s.progress.message}
+            aria-valuemin={0}
+            aria-valuemax={s.progress.total || undefined}
+            aria-valuenow={s.progress.total ? s.progress.done : undefined}
+          >
             <div
               className={`h-full bg-amber-400 transition-all ${s.progress.total ? "" : "w-1/3 animate-pulse"}`}
               style={s.progress.total ? { width: `${(100 * s.progress.done) / s.progress.total}%` } : undefined}
@@ -83,15 +98,19 @@ function CollectionSection({ games }: { games: Game[] }) {
           </div>
         </div>
       )}
-      {s.error && <div className="rounded-lg bg-red-500/15 px-3 py-2 text-xs text-red-200">{s.error}</div>}
+      {s.error && (
+        <div role="alert" className="rounded-lg bg-red-500/15 px-3 py-2 text-xs text-red-200">
+          {s.error}
+        </div>
+      )}
 
       {games.length > 0 && (
         <div className="rounded-lg bg-white/5 px-3 py-2 text-xs text-white/70">
           <div className="text-white">
             <b>{games.length}</b> items {s.username !== "demo" ? `owned by ${s.username}` : "(demo)"}
-            {expansions > 0 && <span className="text-white/50"> · {expansions} expansions</span>}
+            {expansions > 0 && <span className="text-white/65"> · {expansions} expansions</span>}
           </div>
-          <div className="mt-1 leading-relaxed text-white/50">
+          <div className="mt-1 leading-relaxed text-white/65">
             Box sizes: {sources["selected-version"] ?? 0} from your version, {sources["latest-version"] ?? 0} from the
             latest version with a size, {sources.default ?? 0} default 30×21×7 cm
             {(sources["chosen-version"] ?? 0) + (sources.custom ?? 0) > 0 &&
@@ -146,12 +165,14 @@ function AddGame() {
           if (e.target.value.trim().length < 2) setResults(null);
         }}
         placeholder="Search BoardGameGeek…"
-        className="w-full rounded-lg bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/35 outline-none focus:ring-2 focus:ring-amber-400"
+        type="search"
+        aria-label="Search BoardGameGeek for a game to add"
+        className="w-full rounded-lg bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/55 outline-none focus:ring-2 focus:ring-amber-400"
       />
       {error && <div className="mt-1 text-[11px] text-red-300">{error}</div>}
       {results && q.trim().length >= 2 && (
         <ul className="mt-1 max-h-52 overflow-y-auto rounded-lg bg-white/5 text-xs">
-          {results.length === 0 && <li className="px-3 py-2 text-white/40">No matches</li>}
+          {results.length === 0 && <li className="px-3 py-2 text-white/65">No matches</li>}
           {results.map((r) => (
             <li key={r.id}>
               <button
@@ -173,9 +194,9 @@ function AddGame() {
               >
                 <span className="truncate">
                   {r.name}
-                  {r.type === "boardgameexpansion" && <span className="text-white/40"> · expansion</span>}
+                  {r.type === "boardgameexpansion" && <span className="text-white/65"> · expansion</span>}
                 </span>
-                <span className="shrink-0 text-white/40">{busy === r.id ? "adding…" : (r.year ?? "")}</span>
+                <span className="shrink-0 text-white/65">{busy === r.id ? "adding…" : (r.year ?? "")}</span>
               </button>
             </li>
           ))}
@@ -195,7 +216,7 @@ function EditsSummary() {
 
   return (
     <details className="text-xs text-white/70">
-      <summary className="cursor-pointer text-white/50 hover:text-white">
+      <summary className="cursor-pointer text-white/65 hover:text-white">
         Your changes:{" "}
         {[
           edits.added.length && `${edits.added.length} added`,
@@ -226,7 +247,7 @@ function EditsSummary() {
         ))}
         {edits.removed.map((id) => (
           <li key={id} className="flex justify-between gap-2">
-            <span className="truncate text-white/40 line-through">{nameOf(id)}</span>
+            <span className="truncate text-white/65 line-through">{nameOf(id)}</span>
             <button type="button" className="shrink-0 text-amber-300 hover:underline" onClick={() => s.restoreGame(id)}>
               restore
             </button>
@@ -313,13 +334,13 @@ function CustomShelfEditor({ initial, onDone }: { initial: CustomShelf | null; o
       }}
     >
       <label className="block">
-        <span className="mb-1 block text-white/50">Name</span>
+        <span className="mb-1 block text-white/65">Name</span>
         <input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} className={input} />
       </label>
       <div className="grid grid-cols-3 gap-2">
         {CUSTOM_FIELDS.map((f) => (
           <label key={f.key} className="block">
-            <span className="mb-1 block text-white/50">
+            <span className="mb-1 block text-white/65">
               {f.label}
               {!f.int && " (cm)"}
             </span>
@@ -336,7 +357,7 @@ function CustomShelfEditor({ initial, onDone }: { initial: CustomShelf | null; o
         ))}
       </div>
       <Toggle label="Back panel" checked={back} onChange={setBack} />
-      <div className={cell ? "text-white/50" : "text-red-300"}>
+      <div className={cell ? "text-white/65" : "text-red-300"}>
         {cell
           ? `${values.cols * values.rows} compartments of ${round1(cell.w)} × ${round1(cell.h)} cm, ${round1(cell.d)} cm deep`
           : "These measurements leave no room for compartments."}
@@ -374,10 +395,10 @@ function ShelfRow({
     <div className="flex items-center justify-between gap-2">
       <div className="min-w-0">
         <div className="truncate text-sm text-white">{name}</div>
-        <div className="text-[11px] text-white/40">{description}</div>
+        <div className="text-[11px] text-white/65">{description}</div>
         {children}
       </div>
-      <Stepper value={count} onChange={(n) => s.setShelfCount(id, n)} />
+      <Stepper label={name} value={count} onChange={(n) => s.setShelfCount(id, n)} />
     </div>
   );
 }
@@ -446,19 +467,19 @@ function SortingSection() {
     <Section title="Sorting">
       <Field label="Areas" hint="Big sections of the shelves, e.g. wargames apart from family games.">
         <div className="flex gap-1.5">
-          <select
-            value={s.areaBy}
-            onChange={(e) => s.set({ areaBy: e.target.value as AreaKey })}
-            className="min-w-0 flex-1 rounded-lg bg-white/10 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-amber-400 [&>option]:bg-neutral-900"
-          >
+          <Select value={s.areaBy} onChange={(e) => s.set({ areaBy: e.target.value as AreaKey })}>
             {AREA_OPTIONS.map((o) => (
               <option key={o.key} value={o.key}>
                 {o.label}
               </option>
             ))}
-          </select>
+          </Select>
           {s.areaBy !== "none" && (
-            <SortDirection reversed={s.areaReversed} onChange={(v) => s.set({ areaReversed: v })} />
+            <SortDirection
+              label="Reverse the order of areas"
+              reversed={s.areaReversed}
+              onChange={(v) => s.set({ areaReversed: v })}
+            />
           )}
         </div>
       </Field>
@@ -471,22 +492,22 @@ function SortingSection() {
       )}
       <Field label={s.areaBy === "none" ? "Sort by" : "Then sort by"}>
         <div className="flex gap-1.5">
-          <select
-            value={s.sortBy}
-            onChange={(e) => s.set({ sortBy: e.target.value as SortKey })}
-            className="min-w-0 flex-1 rounded-lg bg-white/10 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-amber-400 [&>option]:bg-neutral-900"
-          >
+          <Select value={s.sortBy} onChange={(e) => s.set({ sortBy: e.target.value as SortKey })}>
             {SORT_OPTIONS.map((o) => (
               <option key={o.key} value={o.key}>
                 {o.label}
               </option>
             ))}
-          </select>
-          <SortDirection reversed={s.sortReversed} onChange={(v) => s.set({ sortReversed: v })} />
+          </Select>
+          <SortDirection
+            label="Reverse the sort order"
+            reversed={s.sortReversed}
+            onChange={(v) => s.set({ sortReversed: v })}
+          />
         </div>
       </Field>
       {s.mode === "manual" && (
-        <div className="text-[11px] leading-snug text-white/40">
+        <div className="text-[11px] leading-snug text-white/65">
           In manual mode the order sets how the piles on the floor are laid out, before you move anything.
         </div>
       )}
@@ -522,7 +543,7 @@ function PlacementSection() {
         />
       </Field>
       {s.mode !== "auto" && (
-        <div className="rounded-lg bg-white/5 px-3 py-2 text-[11px] leading-snug text-white/55">
+        <div className="rounded-lg bg-white/5 px-3 py-2 text-[11px] leading-snug text-white/65">
           Drag a box to move it; it slides into a compartment when there&apos;s room. <Kbd>R</Kbd> turns it,{" "}
           <Kbd>T</Kbd> stands it up or lays it down. Drag empty space to move the camera.
         </div>
@@ -622,14 +643,13 @@ function PlacementSection() {
           </Field>
           <MoreOptions label="Fine-tuning">
             <Field label={`Space between columns · ${s.spacing === 0 ? "none" : `${s.spacing} cm`}`}>
-              <input
-                type="range"
+              <Range
                 min={0}
                 max={5}
                 step={0.5}
                 value={s.spacing}
+                valueText={s.spacing === 0 ? "none" : `${s.spacing} centimetres`}
                 onChange={(e) => s.set({ spacing: Number(e.target.value) })}
-                className="w-full accent-amber-400"
               />
             </Field>
             <Field label="Align in each compartment">
@@ -644,34 +664,30 @@ function PlacementSection() {
               />
             </Field>
             <Field label={`Front edge · ${overhangLabel(s.overhang)}`}>
-              <input
-                type="range"
+              <Range
                 min={MIN_OVERHANG}
                 max={10}
                 step={1}
                 value={s.overhang}
+                valueText={overhangLabel(s.overhang)}
                 onChange={(e) => s.set({ overhang: Number(e.target.value) })}
-                className="w-full accent-amber-400"
               />
-              <div className="flex justify-between text-[10px] text-white/35">
+              <div className="flex justify-between text-[10px] text-white/65">
                 <span>pushed back</span>
                 <span>flush</span>
                 <span>sticks out</span>
               </div>
             </Field>
-            <Field
-              label={`Order vs. space · ${look === 0 ? "strict order" : look >= MAX_LOOKAHEAD ? "pack as tight as possible" : `may skip ${look} games to fill gaps`}`}
-            >
-              <input
-                type="range"
+            <Field label={`Order vs. space · ${lookLabel(look)}`}>
+              <Range
                 min={0}
                 max={MAX_LOOKAHEAD}
                 value={look}
+                valueText={lookLabel(look)}
                 onChange={(e) => {
                   const n = Number(e.target.value);
                   s.set({ lookahead: n >= MAX_LOOKAHEAD ? 10_000 : n }); // "unlimited"
                 }}
-                className="w-full accent-amber-400"
               />
             </Field>
           </MoreOptions>
@@ -758,7 +774,7 @@ function StatsSection({ layout, sorted }: { layout: Layout; sorted: SortedGame[]
         ].map(([label, v]) => (
           <div key={label} className="rounded-lg bg-white/5 py-2">
             <div className="text-lg font-semibold tabular-nums text-white">{v}</div>
-            <div className="text-[11px] text-white/45">{label}</div>
+            <div className="text-[11px] text-white/65">{label}</div>
           </div>
         ))}
       </div>
@@ -774,7 +790,7 @@ function StatsSection({ layout, sorted }: { layout: Layout; sorted: SortedGame[]
       )}
       {groups.length > 1 && (
         <details className="text-xs text-white/70">
-          <summary className="cursor-pointer text-white/50 hover:text-white">
+          <summary className="cursor-pointer text-white/65 hover:text-white">
             Order on the shelves ({groups.length} runs)
           </summary>
           <ol className="mt-2 max-h-48 space-y-0.5 overflow-y-auto pr-1">
@@ -796,7 +812,7 @@ function StatsSection({ layout, sorted }: { layout: Layout; sorted: SortedGame[]
                   >
                     {g.name}
                   </button>
-                  <span className="tabular-nums text-white/40">{g.count}</span>
+                  <span className="tabular-nums text-white/65">{g.count}</span>
                 </div>
               </li>
             ))}
@@ -830,6 +846,13 @@ function ShareButton() {
       >
         {state === "copied" ? "Link copied ✓" : "Share"}
       </button>
+      <span className="sr-only" aria-live="polite">
+        {state === "copied"
+          ? "Share link copied to the clipboard"
+          : state === "failed"
+            ? "Copy the share link below"
+            : ""}
+      </span>
       {fallback && (
         <input
           readOnly
@@ -846,6 +869,20 @@ function ShareButton() {
 function ExportButton() {
   const [open, setOpen] = useState(false);
   const username = useStore((s) => s.username);
+  const root = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const first = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    first.current?.focus();
+    // Close when clicking anywhere else.
+    const onDown = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    return () => window.removeEventListener("pointerdown", onDown);
+  }, [open]);
 
   const download = (mode: ExportMode) => {
     setOpen(false);
@@ -856,13 +893,23 @@ function ExportButton() {
     a.download = `shelfie-${username || "collection"}-${mode === "all" ? "collection" : "view"}.png`;
     a.click();
   };
+  const item = "block w-full px-3 py-2 text-left text-white hover:bg-white/10 focus:bg-white/10";
 
   return (
-    <div className="relative">
+    <div
+      ref={root}
+      className="relative"
+      onKeyDown={(e) => {
+        if (e.key !== "Escape" || !open) return;
+        setOpen(false);
+        toggle.current?.focus();
+      }}
+    >
       <button
+        ref={toggle}
         type="button"
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-controls="export-options"
         onClick={() => setOpen((o) => !o)}
         className="rounded-lg bg-white/10 px-3 py-1.5 text-xs text-white hover:bg-white/20"
       >
@@ -870,26 +917,16 @@ function ExportButton() {
       </button>
       {open && (
         <div
-          role="menu"
+          id="export-options"
           className="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg bg-neutral-800 text-xs shadow-xl ring-1 ring-white/10"
         >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => download("view")}
-            className="block w-full px-3 py-2 text-left text-white hover:bg-white/10"
-          >
-            Current view
-            <span className="block text-[10px] text-white/45">What you see, at 2× resolution</span>
+          <button ref={first} type="button" onClick={() => download("view")} className={item}>
+            Download the current view
+            <span className="block text-[10px] text-white/65">What you see, at 2× resolution</span>
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => download("all")}
-            className="block w-full px-3 py-2 text-left text-white hover:bg-white/10"
-          >
-            Whole collection
-            <span className="block text-[10px] text-white/45">Every shelf and pile, front-on</span>
+          <button type="button" onClick={() => download("all")} className={item}>
+            Download the whole collection
+            <span className="block text-[10px] text-white/65">Every shelf and pile, front-on</span>
           </button>
         </div>
       )}
@@ -898,14 +935,15 @@ function ExportButton() {
 }
 
 export function Sidebar({ games, sorted, layout }: { games: Game[]; sorted: SortedGame[]; layout: Layout }) {
+  const Title = games.length > 0 ? "h1" : "div";
   return (
     <>
       <div className="px-4 pb-2 pt-5">
         <div className="flex items-start justify-between gap-2">
-          {/* Not an h1: the page's heading is the server-rendered intro. */}
-          <div className="text-xl font-bold tracking-tight text-white">
+          {/* The server-rendered intro holds the page's h1 until a collection loads (and the intro goes away). */}
+          <Title className="text-xl font-bold tracking-tight text-white">
             Shelf<span className="text-amber-400">ie</span>
-          </div>
+          </Title>
           {games.length > 0 && (
             <div className="flex items-start gap-1.5">
               <ExportButton />
@@ -920,7 +958,7 @@ export function Sidebar({ games, sorted, layout }: { games: Game[]; sorted: Sort
       <SortingSection />
       <PlacementSection />
       <LookSection />
-      <footer className="space-y-1 px-4 py-4 text-center text-[11px] text-white/45">
+      <footer className="space-y-1 px-4 py-4 text-center text-[11px] text-white/65">
         <p>
           Free and open source:{" "}
           <a href={REPO_URL} target="_blank" rel="noopener" className="underline hover:text-white">
