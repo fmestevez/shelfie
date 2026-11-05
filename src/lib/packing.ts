@@ -6,6 +6,7 @@ export type Facing = "left" | "right";
 export type OverflowMode = "top" | "floor" | "top-floor";
 export type Cover = "+x" | "-x" | "+y";
 export type Area = "shelf" | "top" | "floor";
+export type Align = "left" | "center" | "right";
 
 export interface ShelfSelection {
   modelId: string;
@@ -31,6 +32,10 @@ export interface LayoutConfig {
    * < 0: boxes sit this far back from the front edge (as far as the back allows).
    */
   overhang: number;
+  /** cm left between neighbouring columns of boxes. */
+  spacing: number;
+  /** Where each row of boxes sits across its compartment. */
+  align: Align;
 }
 
 export interface Placement {
@@ -61,7 +66,6 @@ export interface Layout {
 }
 
 const EPS = 0.3; // tolerance: boxes squeeze a little
-const GAP = 0.15; // visual gap between neighbouring boxes
 const SUPPORT = 0.6; // fraction of a box's width that must rest on something
 const SIZE_TOLERANCE = 1.5; // cm a box may exceed the boxes it rests on
 const SHELF_GAP = 1.5;
@@ -224,6 +228,8 @@ class Bin {
     readonly multiRow: boolean,
     readonly facing: Facing,
     readonly overhang: number,
+    readonly gap: number,
+    readonly align: Align,
   ) {}
 
   private totalDepth() {
@@ -276,7 +282,7 @@ class Bin {
       let best: { o: Orient; x: number; y: number; rank: number } | undefined;
       opts.forEach((o, rank) => {
         if (!this.depthOk(row, o.Z)) return;
-        const spot = face.find(o.X + GAP, o.Y, a, b, strategy === "prefer" && o.flat, o.flat);
+        const spot = face.find(o.X + this.gap, o.Y, a, b, strategy === "prefer" && o.flat, o.flat);
         if (!spot) return;
         // Lowest spot wins (gravity); orientation preference breaks ties.
         if (!best || spot.y < best.y - 0.01 || (Math.abs(spot.y - best.y) <= 0.01 && rank < best.rank)) {
@@ -286,7 +292,7 @@ class Bin {
       if (!best) continue;
       const { o, x, y } = best;
       const r = row ?? this.openRow();
-      r.face.place({ x, y, w: o.X + GAP, h: o.Y, a, b });
+      r.face.place({ x, y, w: o.X + this.gap, h: o.Y, a, b });
       r.items.push({ sg, x, y, X: o.X, Y: o.Y, Z: o.Z, cover: o.cover });
       r.depth = Math.max(r.depth, o.Z);
       return true;
@@ -307,9 +313,10 @@ class Bin {
       const backLimit = isBack ? c.z : rowFront - row.depth;
       // With several rows, the back row is pushed right against the back panel.
       const zOf = (Z: number) => (isBack && ri > 0 ? c.z + Z / 2 : Math.max(backLimit + Z, rowFront - setBack) - Z / 2);
-      const out = row.items.map((it): Placement => ({
+      const xs = alignRow(row.items, c.w, this.align, this.gap);
+      const out = row.items.map((it, i): Placement => ({
         sg: it.sg,
-        center: [c.x + it.x + it.X / 2, c.y + it.y + it.Y / 2, zOf(it.Z)],
+        center: [c.x + xs[i] + it.X / 2, c.y + it.y + it.Y / 2, zOf(it.Z)],
         size: [it.X, it.Y, it.Z],
         cover: it.cover,
         area,
@@ -321,12 +328,81 @@ class Bin {
   }
 }
 
-type FillOpts = { multiRow: boolean; facing: Facing; lookahead: number; overhang: number; keepOrder: boolean };
-const newBin = (c: Compartment, o: FillOpts) => new Bin(c, o.multiRow, o.facing, o.overhang);
+/**
+ * Left edges for a row packed from the left, re-aligned. Right: the packing is mirrored, so stacks build against the
+ * right side. Centre: every group of boxes resting on a single box is centred over it (carrying whatever is stacked
+ * on them), then the whole row is centred. A group stays put if that would leave something resting partly outside
+ * it, or bring it closer to a neighbour than the column spacing.
+ */
+function alignRow(items: Item[], width: number, align: Align, gap: number): number[] {
+  if (align === "left") return items.map((it) => it.x);
+  if (align === "right") return items.map((it) => width - (it.x + it.X));
+
+  const xs = items.map((it) => it.x);
+  // Packed rows may squeeze slightly past the compartment; never spread wider than they were.
+  const limit = Math.max(width, ...items.map((it) => it.x + it.X));
+  const xOverlap = (i: number, j: number) => Math.min(xs[i] + items[i].X, xs[j] + items[j].X) - Math.max(xs[i], xs[j]);
+  // What each box rests on, from the packed positions.
+  const parents = items.map((it, i) =>
+    items.flatMap((q, j) => (j !== i && Math.abs(q.y + q.Y - it.y) < 0.02 && xOverlap(i, j) > 0.05 ? [j] : [])),
+  );
+  const kids = items.map(() => [] as number[]);
+  parents.forEach((ps, i) => ps.forEach((p) => kids[p].push(i)));
+
+  const order = items.map((_, i) => i).sort((a, b) => items[a].y - items[b].y);
+  for (const q of order) {
+    const group = kids[q].filter((k) => parents[k].length === 1);
+    if (!group.length) continue;
+    const moved = new Set(group);
+    for (const stack = [...group]; stack.length;) {
+      for (const k of kids[stack.pop()!]) {
+        if (moved.has(k)) continue;
+        moved.add(k);
+        stack.push(k);
+      }
+    }
+    const anchored = [...moved].every((i) => group.includes(i) || parents[i].every((p) => moved.has(p)));
+    if (!anchored) continue;
+    const lo = Math.min(...group.map((i) => xs[i]));
+    const hi = Math.max(...group.map((i) => xs[i] + items[i].X));
+    const shift = xs[q] + items[q].X / 2 - (lo + hi) / 2;
+    if (Math.abs(shift) < 0.01) continue;
+    for (const i of moved) xs[i] += shift;
+    const clash = [...moved].some(
+      (i) =>
+        xs[i] < -0.01 ||
+        xs[i] + items[i].X > limit + 0.01 ||
+        items.some(
+          (o, j) =>
+            !moved.has(j) &&
+            // Closer than the column spacing (or overlapping) at the same height.
+            xOverlap(i, j) > 0.01 - gap &&
+            Math.min(items[i].y + items[i].Y, o.y + o.Y) - Math.max(items[i].y, o.y) > 0.01,
+        ),
+    );
+    if (clash) for (const i of moved) xs[i] -= shift;
+  }
+
+  const lo = Math.min(...xs);
+  const hi = Math.max(...items.map((it, i) => xs[i] + it.X));
+  const shift = Math.max(0, (width - (hi - lo)) / 2) - lo;
+  return xs.map((x) => x + shift);
+}
+
+type FillOpts = {
+  multiRow: boolean;
+  facing: Facing;
+  lookahead: number;
+  overhang: number;
+  keepOrder: boolean;
+  spacing: number;
+  align: Align;
+};
+const newBin = (c: Compartment, o: FillOpts) => new Bin(c, o.multiRow, o.facing, o.overhang, o.spacing, o.align);
 
 const fitCache = new WeakMap<SortedGame, Map<string, boolean>>();
 function fitsEmpty(c: Compartment, sg: SortedGame, strategy: Strategy, opts: FillOpts) {
-  const key = `${c.w}|${c.h}|${c.d}|${strategy}|${opts.multiRow}|${Math.max(0, opts.overhang)}`;
+  const key = `${c.w}|${c.h}|${c.d}|${strategy}|${opts.multiRow}|${Math.max(0, opts.overhang)}|${opts.spacing}`;
   let m = fitCache.get(sg);
   if (!m) fitCache.set(sg, (m = new Map()));
   let v = m.get(key);
@@ -453,6 +529,8 @@ export function computeLayout(sorted: SortedGame[], cfg: LayoutConfig): Layout {
     lookahead: cfg.lookahead,
     overhang: cfg.overhang,
     keepOrder: cfg.keepOrder,
+    spacing: Math.max(0, cfg.spacing),
+    align: cfg.align,
   };
 
   const placements: Placement[] = [];
@@ -542,7 +620,15 @@ export function computeLayout(sorted: SortedGame[], cfg: LayoutConfig): Layout {
  * rows further from the wall.
  */
 export function floorLayout(sorted: SortedGame[], facing: Facing, shelvesWidth: number): Placement[] {
-  const opts: FillOpts = { multiRow: false, facing, lookahead: Infinity, overhang: 0, keepOrder: false };
+  const opts: FillOpts = {
+    multiRow: false,
+    facing,
+    lookahead: Infinity,
+    overhang: 0,
+    keepOrder: false,
+    spacing: 0.5,
+    align: "center",
+  };
   const volume = sorted.reduce((s, sg) => s + sg.game.dims[0] * sg.game.dims[1] * sg.game.dims[2], 0);
   // Low piles, so they don't hide the shelves behind them.
   const pileH = 36;

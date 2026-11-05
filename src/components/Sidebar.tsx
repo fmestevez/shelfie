@@ -4,14 +4,15 @@ import { type ReactNode, useEffect, useState } from "react";
 import { addGameFromBgg, loadCollection, loadDemo } from "@/lib/loadCollection";
 import { shareUrl } from "@/lib/share";
 import { type ExportMode, sceneApi } from "./three/sceneApi";
-import type { Layout, Orientation, OverflowMode } from "@/lib/packing";
+import type { Align, Layout, Orientation, OverflowMode } from "@/lib/packing";
 import { CUSTOM_SHELF_DEFAULTS, type CustomShelf, customCell, customShelfModel, SHELF_MODELS } from "@/lib/shelves";
 import { AREA_OPTIONS, type AreaKey, SORT_OPTIONS, type SortedGame, type SortKey } from "@/lib/sorting";
 import { manualStats } from "@/lib/bodies";
 import { editsOf, type EnvironmentId, type Mode, useStore } from "@/lib/store";
 import type { Game, SearchResult } from "@/lib/types";
+import { Credit } from "./Credit";
 import { ENVIRONMENTS } from "./three/Room";
-import { Field, Section, Segmented, SortDirection, Stepper, Toggle } from "./ui";
+import { Field, MoreOptions, Section, Segmented, SortDirection, Stepper, Toggle } from "./ui";
 
 const MAX_LOOKAHEAD = 40;
 const MIN_OVERHANG = -40; // deeper than any shelf: everything against the back
@@ -99,17 +100,16 @@ function CollectionSection({ games }: { games: Game[] }) {
           </div>
         </div>
       )}
-      {games.length > 0 && <EditsSummary />}
-      {games.length > 0 && <AddGame />}
-      <Toggle
-        label="Include expansions"
-        checked={s.includeExpansions}
-        onChange={(v) => s.set({ includeExpansions: v })}
-      />
-      <Toggle label="Box art on boxes" checked={s.showArt} onChange={(v) => s.set({ showArt: v })} />
-      <Toggle label="Titles on boxes" checked={s.showTitles} onChange={(v) => s.set({ showTitles: v })} />
-      {s.showArt && (
-        <Toggle label="High-res box art" checked={s.hdTextures} onChange={(v) => s.set({ hdTextures: v })} />
+      {games.length > 0 && (
+        <>
+          <Toggle
+            label="Include expansions"
+            checked={s.includeExpansions}
+            onChange={(v) => s.set({ includeExpansions: v })}
+          />
+          <AddGame />
+          <EditsSummary />
+        </>
       )}
     </Section>
   );
@@ -436,27 +436,14 @@ function ShelvesSection() {
           />
         </Field>
       )}
-      <Field label="Finish">
-        <Segmented
-          value={s.finish}
-          options={[
-            { value: "white", label: "White" },
-            { value: "black", label: "Black-brown" },
-            { value: "oak", label: "Oak" },
-          ]}
-          onChange={(v) => s.set({ finish: v })}
-        />
-      </Field>
     </Section>
   );
 }
 
-function ArrangementSection() {
+function SortingSection() {
   const s = useStore();
-  const look = Math.min(MAX_LOOKAHEAD, s.lookahead);
-
   return (
-    <Section title="Arrangement">
+    <Section title="Sorting">
       <Field label="Areas" hint="Big sections of the shelves, e.g. wargames apart from family games.">
         <div className="flex gap-1.5">
           <select
@@ -498,11 +485,89 @@ function ArrangementSection() {
           <SortDirection reversed={s.sortReversed} onChange={(v) => s.set({ sortReversed: v })} />
         </div>
       </Field>
-      {s.mode === "manual" ? (
+      {s.mode === "manual" && (
         <div className="text-[11px] leading-snug text-white/40">
           In manual mode the order sets how the piles on the floor are laid out, before you move anything.
         </div>
-      ) : (
+      )}
+    </Section>
+  );
+}
+
+const MODE_HINT: Record<Mode, string> = {
+  auto: "Shelfie packs every box for you.",
+  physics: "Shelfie packs the boxes, then real gravity takes over: drag boxes to move or throw them.",
+  manual: "Every game starts on the floor and you place each box; Shelfie remembers where you put it.",
+};
+
+function PlacementSection() {
+  const s = useStore();
+  const look = Math.min(MAX_LOOKAHEAD, s.lookahead);
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <Section title="Placement">
+      <Field label="Who places the boxes" hint={MODE_HINT[s.mode]}>
+        <Segmented<Mode>
+          value={s.mode}
+          options={[
+            { value: "auto", label: "Auto" },
+            { value: "physics", label: "Physics" },
+            { value: "manual", label: "Manual" },
+          ]}
+          onChange={(v) => {
+            setConfirming(false);
+            s.set({ mode: v, selectedId: null, hoveredId: null });
+          }}
+        />
+      </Field>
+      {s.mode !== "auto" && (
+        <div className="rounded-lg bg-white/5 px-3 py-2 text-[11px] leading-snug text-white/55">
+          Drag a box to move it; it slides into a compartment when there&apos;s room. <Kbd>R</Kbd> turns it,{" "}
+          <Kbd>T</Kbd> stands it up or lays it down. Drag empty space to move the camera.
+        </div>
+      )}
+      {s.mode === "physics" && (
+        <button
+          type="button"
+          onClick={s.resetPhysics}
+          className="w-full rounded-lg bg-white/10 py-2 text-xs text-white hover:bg-white/20"
+        >
+          Repack the shelves
+        </button>
+      )}
+      {s.mode === "manual" &&
+        (confirming ? (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="flex-1 text-white/70">Move every box back to the floor?</span>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="px-2 py-1 text-white/60 hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                s.resetPhysics();
+                setConfirming(false);
+              }}
+              className="rounded-md bg-red-400 px-2 py-1 font-semibold text-black"
+            >
+              Reset
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="w-full rounded-lg bg-white/10 py-2 text-xs text-white hover:bg-white/20"
+          >
+            Put everything back on the floor
+          </button>
+        ))}
+      {s.mode !== "manual" && (
         <>
           <Field
             label="Box orientation"
@@ -544,37 +609,6 @@ function ArrangementSection() {
               onChange={(v) => s.set({ multiRow: v === "multi" })}
             />
           </Field>
-          <Field label={`Front edge · ${overhangLabel(s.overhang)}`}>
-            <input
-              type="range"
-              min={MIN_OVERHANG}
-              max={10}
-              step={1}
-              value={s.overhang}
-              onChange={(e) => s.set({ overhang: Number(e.target.value) })}
-              className="w-full accent-amber-400"
-            />
-            <div className="flex justify-between text-[10px] text-white/35">
-              <span>pushed back</span>
-              <span>flush</span>
-              <span>sticks out</span>
-            </div>
-          </Field>
-          <Field
-            label={`Order vs. space · ${look === 0 ? "strict order" : look >= MAX_LOOKAHEAD ? "pack as tight as possible" : `may skip ${look} games to fill gaps`}`}
-          >
-            <input
-              type="range"
-              min={0}
-              max={MAX_LOOKAHEAD}
-              value={look}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                s.set({ lookahead: n >= MAX_LOOKAHEAD ? 10_000 : n }); // "unlimited"
-              }}
-              className="w-full accent-amber-400"
-            />
-          </Field>
           <Field label="Overflow goes">
             <Segmented<OverflowMode>
               value={s.overflow}
@@ -586,33 +620,114 @@ function ArrangementSection() {
               onChange={(v) => s.set({ overflow: v })}
             />
           </Field>
+          <MoreOptions label="Fine-tuning">
+            <Field label={`Space between columns · ${s.spacing === 0 ? "none" : `${s.spacing} cm`}`}>
+              <input
+                type="range"
+                min={0}
+                max={5}
+                step={0.5}
+                value={s.spacing}
+                onChange={(e) => s.set({ spacing: Number(e.target.value) })}
+                className="w-full accent-amber-400"
+              />
+            </Field>
+            <Field label="Align in each compartment">
+              <Segmented<Align>
+                value={s.align}
+                options={[
+                  { value: "left", label: "Left" },
+                  { value: "center", label: "Centre" },
+                  { value: "right", label: "Right" },
+                ]}
+                onChange={(v) => s.set({ align: v })}
+              />
+            </Field>
+            <Field label={`Front edge · ${overhangLabel(s.overhang)}`}>
+              <input
+                type="range"
+                min={MIN_OVERHANG}
+                max={10}
+                step={1}
+                value={s.overhang}
+                onChange={(e) => s.set({ overhang: Number(e.target.value) })}
+                className="w-full accent-amber-400"
+              />
+              <div className="flex justify-between text-[10px] text-white/35">
+                <span>pushed back</span>
+                <span>flush</span>
+                <span>sticks out</span>
+              </div>
+            </Field>
+            <Field
+              label={`Order vs. space · ${look === 0 ? "strict order" : look >= MAX_LOOKAHEAD ? "pack as tight as possible" : `may skip ${look} games to fill gaps`}`}
+            >
+              <input
+                type="range"
+                min={0}
+                max={MAX_LOOKAHEAD}
+                value={look}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  s.set({ lookahead: n >= MAX_LOOKAHEAD ? 10_000 : n }); // "unlimited"
+                }}
+                className="w-full accent-amber-400"
+              />
+            </Field>
+          </MoreOptions>
         </>
       )}
     </Section>
   );
 }
 
-function SceneSection() {
+function Kbd({ children }: { children: ReactNode }) {
+  return <kbd className="rounded bg-white/15 px-1 font-mono text-[10px] text-white">{children}</kbd>;
+}
+
+function LookSection() {
   const s = useStore();
   return (
-    <Section title="Room">
-      <div className="grid grid-cols-2 gap-1.5">
-        {(Object.keys(ENVIRONMENTS) as EnvironmentId[]).map((id) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => s.set({ environment: id })}
-            className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition ${
-              s.environment === id
-                ? "bg-white/15 text-white ring-1 ring-amber-400"
-                : "bg-white/5 text-white/70 hover:bg-white/10"
-            }`}
-          >
-            <span className="h-4 w-4 shrink-0 rounded" style={{ background: ENVIRONMENTS[id].background }} />
-            {ENVIRONMENTS[id].label}
-          </button>
-        ))}
-      </div>
+    <Section title="Look">
+      <Field label="Room">
+        <div className="grid grid-cols-2 gap-1.5">
+          {(Object.keys(ENVIRONMENTS) as EnvironmentId[]).map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => s.set({ environment: id })}
+              className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition ${
+                s.environment === id
+                  ? "bg-white/15 text-white ring-1 ring-amber-400"
+                  : "bg-white/5 text-white/70 hover:bg-white/10"
+              }`}
+            >
+              <span className="h-4 w-4 shrink-0 rounded" style={{ background: ENVIRONMENTS[id].background }} />
+              {ENVIRONMENTS[id].label}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label="Shelf finish">
+        <Segmented
+          value={s.finish}
+          options={[
+            { value: "white", label: "White" },
+            { value: "black", label: "Black-brown" },
+            { value: "oak", label: "Oak" },
+          ]}
+          onChange={(v) => s.set({ finish: v })}
+        />
+      </Field>
+      <Field label="Boxes">
+        <div className="space-y-2.5">
+          <Toggle label="Box art" checked={s.showArt} onChange={(v) => s.set({ showArt: v })} />
+          <Toggle label="Titles" checked={s.showTitles} onChange={(v) => s.set({ showTitles: v })} />
+          {s.showArt && (
+            <Toggle label="High-res art" checked={s.hdTextures} onChange={(v) => s.set({ hdTextures: v })} />
+          )}
+        </div>
+      </Field>
     </Section>
   );
 }
@@ -782,88 +897,6 @@ function ExportButton() {
   );
 }
 
-const MODE_HINT: Record<Mode, string> = {
-  auto: "Shelfie packs every box for you.",
-  physics: "The packed shelves with real gravity: drag boxes to move or throw them.",
-  manual: "Every game starts on the floor. Drag each box onto the shelves; Shelfie remembers where you put it.",
-};
-
-function ModeSection() {
-  const mode = useStore((s) => s.mode);
-  const set = useStore((s) => s.set);
-  const resetPhysics = useStore((s) => s.resetPhysics);
-  const [confirming, setConfirming] = useState(false);
-
-  return (
-    <Section title="Mode">
-      <Field label="Who places the boxes" hint={MODE_HINT[mode]}>
-        <Segmented<Mode>
-          value={mode}
-          options={[
-            { value: "auto", label: "Auto" },
-            { value: "physics", label: "Physics" },
-            { value: "manual", label: "Manual" },
-          ]}
-          onChange={(v) => {
-            setConfirming(false);
-            set({ mode: v, selectedId: null, hoveredId: null });
-          }}
-        />
-      </Field>
-      {mode !== "auto" && (
-        <div className="space-y-1.5 text-[11px] leading-snug text-white/45">
-          <p>
-            Drag a box to pick it up. Over a compartment it slides in until it meets the back or another box; elsewhere
-            it lands on whatever is below. Press R to turn it and T to stand it up or lay it down, or use the buttons on
-            the game&apos;s card.
-          </p>
-          <p>Drag empty space to move the camera.</p>
-        </div>
-      )}
-      {mode === "physics" && (
-        <button
-          type="button"
-          onClick={resetPhysics}
-          className="w-full rounded-lg bg-white/10 py-2 text-xs text-white hover:bg-white/20"
-        >
-          Repack the shelves
-        </button>
-      )}
-      {mode === "manual" &&
-        (confirming ? (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="flex-1 text-white/70">Move every box back to the floor?</span>
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="px-2 py-1 text-white/60 hover:text-white"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                resetPhysics();
-                setConfirming(false);
-              }}
-              className="rounded-md bg-red-400 px-2 py-1 font-semibold text-black"
-            >
-              Reset
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            className="w-full rounded-lg bg-white/10 py-2 text-xs text-white hover:bg-white/20"
-          >
-            Put everything back on the floor
-          </button>
-        ))}
-    </Section>
-  );
-}
-
 export function Sidebar({ games, sorted, layout }: { games: Game[]; sorted: SortedGame[]; layout: Layout }) {
   return (
     <>
@@ -880,14 +913,14 @@ export function Sidebar({ games, sorted, layout }: { games: Game[]; sorted: Sort
             </div>
           )}
         </div>
-        <p className="text-xs text-white/50">Your BoardGameGeek collection, packed onto real shelves.</p>
       </div>
       <CollectionSection games={games} />
       {games.length > 0 && <StatsSection layout={layout} sorted={sorted} />}
-      {games.length > 0 && <ModeSection />}
       <ShelvesSection />
-      <ArrangementSection />
-      <SceneSection />
+      <SortingSection />
+      <PlacementSection />
+      <LookSection />
+      <Credit className="px-4 py-4 text-center text-[11px] text-white/45" />
     </>
   );
 }

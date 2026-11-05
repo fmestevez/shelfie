@@ -27,6 +27,8 @@ function useLayout() {
       sortReversed: s.sortReversed,
       separateAreas: s.separateAreas,
       overhang: s.overhang,
+      spacing: s.spacing,
+      align: s.align,
       shelves: s.shelves,
       customShelves: s.customShelves,
       billyCompartments: s.billyCompartments,
@@ -61,6 +63,8 @@ function useLayout() {
         overflow: s.overflow,
         separateAreas: s.separateAreas,
         overhang: s.overhang,
+        spacing: s.spacing,
+        align: s.align,
         keepOrder: s.sortBy === "color",
       }),
     [
@@ -75,6 +79,8 @@ function useLayout() {
       s.overflow,
       s.separateAreas,
       s.overhang,
+      s.spacing,
+      s.align,
       s.sortBy,
     ],
   );

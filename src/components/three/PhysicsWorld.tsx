@@ -13,10 +13,17 @@ import { physicsApi } from "./physicsApi";
 
 // Units are centimetres, so gravity is 981 cm/s².
 const GRAVITY: [number, number, number] = [0, -981, 0];
-/** Colliders are a little smaller than the boxes: packed boxes squeeze, and touching ones mustn't explode apart. */
-const SKIN = 0.3;
+/** Colliders are a hair smaller than the boxes, so packed boxes that touch don't start out overlapping. */
+const SKIN = 0.05;
 const DRAG_THRESHOLD = 5; // px before a press on a box becomes a drag
-const DROP_FROM = 400; // cm: height probed from when dropping outside a compartment
+const DROP_FROM = 400; // cm: height probed from when resting a box on the floor
+const CEILING = 255; // cm: room above a unit for boxes stacked on top
+const OVERHANG_OK = 6; // cm a slotted box may stick out of the front
+const FLOAT_GAP = 15; // cm between the shelf fronts and a box held in front of them
+// Rapier interaction groups: 16 bits of membership, then 16 bits of filter.
+const NO_CONTACT = 0x0000_0000;
+const ALL_CONTACT = 0xffff_ffff;
+const EASE = 18; // 1/s: how quickly the held box catches up with where it's going
 const MAX_FLING = 600; // cm/s
 
 type Grab = (e: ThreeEvent<PointerEvent>, collId: number) => void;
@@ -92,7 +99,6 @@ const PhysicsBox = memo(function PhysicsBox({
 }) {
   const id = spec.sg.game.collId;
   const ref = useRef<RapierRigidBody>(null);
-  const highlighted = useStore((s) => (s.hoveredId ?? s.selectedId) === id);
   const hovered = useStore((s) => s.hoveredId === id);
 
   useEffect(() => {
@@ -109,6 +115,9 @@ const PhysicsBox = memo(function PhysicsBox({
       position={spec.position}
       quaternion={spec.quaternion}
       colliders={false}
+      // At 60 steps a second a falling or knocked box moves further per step than a shelf panel is thick;
+      // continuous collision detection stops it tunnelling through (and costs nothing while it sleeps).
+      ccd
       linearDamping={0.2}
       angularDamping={0.5}
     >
@@ -121,10 +130,13 @@ const PhysicsBox = memo(function PhysicsBox({
         game={spec.sg.game}
         size={spec.size}
         cover={spec.cover}
+        // Resting boxes touch collider to collider, so draw them exactly that size: any bigger and neighbours overlap,
+        // and their faces flicker against each other.
+        inset={2 * SKIN}
         onPointerDown={(e) => grabRef.current?.(e, id)}
         {...look}
       />
-      {highlighted && <Highlight sg={spec.sg} size={spec.size} hovered={hovered} />}
+      {hovered && <Highlight sg={spec.sg} size={spec.size} hovered />}
     </RigidBody>
   );
 });
@@ -152,7 +164,19 @@ function Interaction({
   useEffect(() => {
     const el = gl.domElement;
     const specs = new Map(bodies.map((b) => [b.sg.game.collId, b]));
-    const compartments = shelves.flatMap((s) => s.build.compartments.map((c) => ({ ...c, x: c.x + s.offsetX })));
+    // Places a box can slide into: every compartment, and the space on top of each unit.
+    const slots = shelves.flatMap((s) => [
+      ...s.build.compartments.map((c) => ({ ...c, x: c.x + s.offsetX })),
+      {
+        x: s.offsetX,
+        y: s.build.height,
+        z: 0,
+        w: s.build.width,
+        h: Math.max(40, CEILING - s.build.height),
+        d: s.build.depth,
+      },
+    ]);
+    const front = shelves.reduce((m, s) => Math.max(m, s.build.depth), 0);
     const raycaster = new THREE.Raycaster();
     const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
@@ -161,8 +185,13 @@ function Interaction({
       id: number;
       body: RapierRigidBody;
       he: THREE.Vector3;
+      /** Where the box is shown, easing towards `goal`. */
+      pos: THREE.Vector3;
+      goal: THREE.Vector3;
+      last: number;
       history: { t: number; p: THREE.Vector3 }[];
     } | null = null;
+    let raf = 0;
     let lastRay: THREE.Ray | null = null;
     let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -230,15 +259,19 @@ function Interaction({
       return hit ? Math.max(0, hit.time_of_impact - 0.05) : max;
     };
 
-    /** Where the held box goes for a pointer ray: into the compartment under it, or dropped on whatever is below. */
+    /**
+     * Where the held box goes for a pointer ray. Over a slot with room for it, it slides in until it meets the back or
+     * another box, then settles. Otherwise it stays under the pointer: floating just in front of the shelves, or resting
+     * on the floor when the pointer is on the floor in front of them.
+     */
     const target = (ray: THREE.Ray) => {
       if (!held) return null;
       const { body, he } = held;
-      let best: (typeof compartments)[number] | null = null;
+      let best: (typeof slots)[number] | null = null;
       let hit: THREE.Vector3 | null = null;
       let bestD = Infinity;
       const box = new THREE.Box3();
-      for (const c of compartments) {
+      for (const c of slots) {
         if (2 * he.x > c.w + 0.5 || 2 * he.y > c.h + 0.5) continue;
         box.min.set(c.x, c.y, c.z);
         box.max.set(c.x + c.w, c.y + c.h, c.z + c.d);
@@ -249,40 +282,48 @@ function Interaction({
 
       if (best && hit) {
         const c = best;
-        // Slide in from the front at the pointer's height until it meets the back or another box, then lower it.
         const x = clamp(hit.x, c.x + he.x + 0.05, c.x + c.w - he.x - 0.05);
         const y0 = clamp(hit.y, c.y + he.y + 0.4, c.y + c.h - he.y - 0.1);
         const z0 = c.z + c.d + he.z + 12;
         const z = z0 - sweep(body, he, new THREE.Vector3(x, y0, z0), new THREE.Vector3(0, 0, -1), z0 - (c.z + he.z));
-        const y = y0 - sweep(body, he, new THREE.Vector3(x, y0, z), new THREE.Vector3(0, -1, 0), y0 - he.y);
-        return new THREE.Vector3(x, y + 0.2, z);
+        if (z + he.z <= c.z + c.d + OVERHANG_OK) {
+          const y = y0 - sweep(body, he, new THREE.Vector3(x, y0, z), new THREE.Vector3(0, -1, 0), y0 - he.y);
+          return new THREE.Vector3(x, y + 0.2, z);
+        }
       }
 
-      // Elsewhere: follow the pointer over the floor (or along the wall when pointing above it), landing on top of whatever is there.
-      let x: number;
-      let z: number;
+      const floatZ = front + he.z + FLOAT_GAP;
       const g = ray.intersectPlane(ground, new THREE.Vector3());
-      if (g && g.z >= he.z + 0.5) [x, z] = [g.x, g.z];
-      else {
-        const w = ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -(he.z + 0.5)), new THREE.Vector3());
-        if (!w) return null;
-        [x, z] = [w.x, he.z + 0.5];
+      if (g && g.z > floatZ) {
+        const x = clamp(g.x, -2000, 2000);
+        const z = Math.min(g.z, 1500);
+        const y =
+          DROP_FROM -
+          sweep(body, he, new THREE.Vector3(x, DROP_FROM, z), new THREE.Vector3(0, -1, 0), DROP_FROM - he.y);
+        return new THREE.Vector3(x, y + 0.2, z);
       }
-      x = clamp(x, -2000, 2000);
-      z = clamp(z, he.z + 0.5, 1500);
-      const from = new THREE.Vector3(x, DROP_FROM, z);
-      const y = DROP_FROM - sweep(body, he, from, new THREE.Vector3(0, -1, 0), DROP_FROM - he.y);
-      return new THREE.Vector3(x, y + 0.2, z);
+      const f = ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -floatZ), new THREE.Vector3());
+      if (!f) return null;
+      return new THREE.Vector3(clamp(f.x, -2000, 2000), Math.max(f.y, he.y + 0.2), floatZ);
     };
 
     const follow = () => {
       if (!held || !lastRay) return;
       const p = target(lastRay);
-      if (!p) return;
-      held.body.setTranslation(p, true);
-      held.history.push({ t: performance.now(), p });
+      if (p) held.goal.copy(p);
+    };
+
+    // Ease the held box towards its goal every frame, so moving between slots glides instead of jumping.
+    const tick = (now: number) => {
+      if (!held) return;
+      const dt = Math.min(0.05, (now - held.last) / 1000);
+      held.last = now;
+      held.pos.lerp(held.goal, 1 - Math.exp(-EASE * dt));
+      held.body.setTranslation(held.pos, true);
+      held.history.push({ t: now, p: held.pos.clone() });
       if (held.history.length > 8) held.history.shift();
       invalidate();
+      raf = requestAnimationFrame(tick);
     };
 
     const startHold = (id: number) => {
@@ -290,15 +331,25 @@ function Interaction({
       const spec = specs.get(id);
       if (!body || !spec) return;
       body.setBodyType(rapier.RigidBodyType.KinematicPositionBased, true);
+      // While held it passes through everything instead of shoving other boxes around. (Solver groups, not a
+      // sensor: a collider switched back from sensor ignores whatever it was already touching, and falls through it.)
+      body.collider(0)?.setSolverGroups(NO_CONTACT);
       const q = squareUp(toQuat(body.rotation()));
       body.setRotation(q, true);
-      held = { id, body, he: halfExtents(spec.size, q), history: [] };
+      const t = body.translation();
+      const pos = new THREE.Vector3(t.x, t.y, t.z);
+      held = { id, body, he: halfExtents(spec.size, q), pos, goal: pos.clone(), last: performance.now(), history: [] };
+      raf = requestAnimationFrame(tick);
       useStore.getState().set({ selectedId: id, hoveredId: null });
     };
 
     const release = () => {
       if (held) {
-        const { body, history } = held;
+        const { body, history, goal } = held;
+        cancelAnimationFrame(raf);
+        // Drop it where it was going, not part-way there (which could be inside a panel).
+        body.setTranslation(goal, true);
+        body.collider(0)?.setSolverGroups(ALL_CONTACT);
         body.setBodyType(rapier.RigidBodyType.Dynamic, true);
         // In physics mode a quick release throws the box.
         let v = new THREE.Vector3();
@@ -311,8 +362,6 @@ function Interaction({
             .divideScalar((last.t - first.t) / 1000)
             .clampLength(0, MAX_FLING);
         }
-        // Thrown boxes are fast enough to pass through a thin shelf panel without continuous collision checks.
-        body.enableCcd(v.lengthSq() > 0);
         body.setLinvel(v, true);
         body.setAngvel({ x: 0, y: 0, z: 0 }, true);
         held = null;
@@ -380,6 +429,7 @@ function Interaction({
       window.removeEventListener("pointerup", release);
       window.removeEventListener("pointercancel", release);
       window.removeEventListener("keydown", onKey);
+      cancelAnimationFrame(raf);
       if (saveTimer) {
         clearTimeout(saveTimer);
         save(10);

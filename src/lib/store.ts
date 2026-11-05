@@ -101,6 +101,8 @@ export const useStore = create<State>()(
       areaBy: "domain",
       separateAreas: true,
       overhang: 3,
+      spacing: 0,
+      align: "left",
       sortBy: "theme",
       areaReversed: false,
       sortReversed: false,
@@ -115,7 +117,7 @@ export const useStore = create<State>()(
       showArt: true,
       showTitles: true,
 
-      mode: "auto",
+      mode: "physics",
       manual: {},
       physicsSeed: 0,
 

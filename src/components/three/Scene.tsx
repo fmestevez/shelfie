@@ -9,6 +9,7 @@ import type { BodySpec } from "@/lib/bodies";
 import type { Layout } from "@/lib/packing";
 import { useStore } from "@/lib/store";
 import { GameBoxes } from "./GameBoxes";
+import type { Clearance } from "./Decor";
 import { Room } from "./Room";
 import { createSceneApi, FOV, homeView, MAX_POLAR, sceneApi } from "./sceneApi";
 import { Shelves } from "./Shelves";
@@ -70,16 +71,31 @@ export function Scene({ layout, bodies }: { layout: Layout; bodies: BodySpec[] |
   const set = useStore((s) => s.set);
   const floorSpan = layout.floorAreas.reduce((m, a) => Math.max(m, Math.abs(a.x), Math.abs(a.x + a.w)), 0) * 2;
   const span = Math.max(layout.width, floorSpan, 120);
+  // Decor stays clear of the shelves and of any boxes along the wall beside them.
+  const clearance = useMemo<Clearance>(() => {
+    const half = Math.max(layout.width, 60) / 2;
+    let left = -half;
+    let right = half;
+    for (const b of boxes) {
+      if (b.center[2] - b.size[2] / 2 > 55) continue;
+      const r = Math.max(b.size[0], b.size[2]) / 2;
+      left = Math.min(left, b.center[0] - r);
+      right = Math.max(right, b.center[0] + r);
+    }
+    return { left: left - 15, right: right + 15, shelvesLeft: -half, shelvesRight: half };
+  }, [boxes, layout.width]);
 
   return (
     <Canvas
       shadows
       frameloop="demand"
       dpr={[1, 2]}
+      // The selection outline masks the box's silhouette in the stencil buffer.
+      gl={{ stencil: true }}
       camera={{ fov: FOV, near: 1, far: 8000, position: [0, 120, 400] }}
       onPointerMissed={() => set({ selectedId: null })}
     >
-      <Room id={environment} span={span} />
+      <Room id={environment} span={span} clearance={clearance} />
       <Shelves shelves={layout.shelves} />
       {bodies ? (
         <Suspense fallback={null}>

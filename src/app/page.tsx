@@ -1,5 +1,6 @@
 import ClientApp from "@/components/ClientApp";
 import { WelcomeGate } from "@/components/WelcomeGate";
+import { Credit } from "@/components/Credit";
 import { REPO_URL, SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 
 const jsonLd = {
@@ -56,6 +57,7 @@ export default function Page() {
               </a>
               . Not affiliated with BoardGameGeek or IKEA.
             </p>
+            <Credit className="mt-1 text-xs text-white/40" />
           </div>
         </section>
       </WelcomeGate>

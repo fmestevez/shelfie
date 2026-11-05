@@ -22,6 +22,8 @@ const SETTINGS = [
   "lookahead",
   "overflow",
   "overhang",
+  "spacing",
+  "align",
   "includeExpansions",
   "environment",
   "showArt",

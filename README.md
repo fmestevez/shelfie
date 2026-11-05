@@ -6,6 +6,14 @@ Enter a BGG username and Shelfie fetches the games you own, works out each box's
 
 **Production URL:** https://shelfie.theboardgamesfamily.com (once deployed, see [Deploying to Vercel](#deploying-to-vercel))
 
+![A 329-game collection packed onto two Kallax 5×5 units in the living room](docs/screenshots/living-room.jpg)
+
+| Box art on every side | Game café, with a game selected |
+|---|---|
+| ![Close-up of box spines and tops](docs/screenshots/close-up.jpg) | ![Shelves in the game café room with the details card open](docs/screenshots/game-cafe.jpg) |
+| **Garden** | |
+| ![Shelves in the garden room](docs/screenshots/garden.jpg) | |
+
 ## Features
 
 - **Your real collection:** owned games from BGG, with box art used as textures.
@@ -27,13 +35,13 @@ Enter a BGG username and Shelfie fetches the games you own, works out each box's
   - **front edge:** a slider from "may stick out" to "pushed to the back";
   - **order vs. space:** a slider for how many games may jump ahead to fill gaps.
 - **Modes:**
-  - **Auto:** Shelfie packs everything;
-  - **Physics:** the packed shelves become rigid bodies (Rapier) that you can grab, move and throw;
+  - **Physics** (the default): the packed shelves become rigid bodies (Rapier) that you can grab, move and throw;
+  - **Auto:** Shelfie packs everything, with no physics;
   - **Manual:** every game starts in piles on the floor and you drag each box onto the shelves. A box slides into the compartment under the pointer until it meets the back or another box; R / T (or the card's buttons) turn it or stand it up. Positions are saved in the browser.
 - **Overflow:** stacked on top of the shelves, piled on the floor beside them, or both.
 - **Your edits:** remove games, or add games that aren't in your collection (BGG search).
-- **Rooms:** living room, brick loft, game café, white gallery, garden.
-- **Box faces:** switch box art and titles on or off independently.
+- **Rooms:** living room, brick loft, game café, white gallery and garden, each with its own lighting (evening lamp, factory window and pendants, string lights, gallery track spots, midday sun) and furniture, plants and decorations.
+- **Box faces:** box art on the covers and art with the title on every edge; switch art and titles on or off independently.
 - **Camera:** drag to orbit and scroll to zoom, or use the on-screen pad (orbit, tilt, zoom, pan, fit), which works on phones too.
 - **Image export:** the current view at 2× resolution, or the whole collection framed front-on (up to 4096 px).
 - **Share links:** one link carries the collection, every setting and your edits.
@@ -94,6 +102,10 @@ The repo is ready for Vercel (`vercel.ts` holds the project config).
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Credits
+
+Created with ♥ by [@theboardgamesfamily](https://www.instagram.com/theboardgamesfamily/) on Instagram.
 
 ## Licence
 

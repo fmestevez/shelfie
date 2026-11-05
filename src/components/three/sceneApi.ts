@@ -25,7 +25,8 @@ export const MAX_POLAR = Math.PI / 2 - 0.03;
 /** Camera position and target that frame shelves `span` cm wide. */
 export function homeView(span: number, aspect: number) {
   const halfFov = ((FOV / 2) * Math.PI) / 180;
-  const fitW = (span / 2 + 30) / (Math.tan(halfFov) * aspect);
+  // Leave room either side for a glimpse of the room's furniture.
+  const fitW = (span / 2 + 75) / (Math.tan(halfFov) * aspect);
   const fitH = 118 / Math.tan(halfFov);
   const dist = Math.max(fitW, fitH);
   return { position: new THREE.Vector3(dist * 0.08, 120, dist + 20), target: new THREE.Vector3(0, 100, 20) };
@@ -65,14 +66,16 @@ export function createSceneApi(ctx: {
 
   const offset = () => camera.position.clone().sub(controls.target);
 
-  /** Render once without the hover/selection highlight and read the pixels back. */
+  /** Render once without the hover glow or selection outline and read the pixels back. */
   const capture = (cam: THREE.Camera) => {
-    const highlight = scene.getObjectByName("highlight");
-    const wasVisible = highlight?.visible;
-    if (highlight) highlight.visible = false;
+    const hidden: THREE.Object3D[] = [];
+    scene.traverse((o) => {
+      if (o.name === "highlight" && o.visible) hidden.push(o);
+    });
+    for (const o of hidden) o.visible = false;
     gl.render(scene, cam);
     const url = gl.domElement.toDataURL("image/png");
-    if (highlight) highlight.visible = wasVisible ?? true;
+    for (const o of hidden) o.visible = true;
     return url;
   };
 

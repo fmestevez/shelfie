@@ -302,3 +302,18 @@ export function speckled(key: string, color: string, amount = 0.08) {
     return c;
   });
 }
+
+// ---------- decor ----------
+
+const paintedCache = new Map<string, THREE.Texture>();
+/** A one-off canvas texture (art, rugs, signs), drawn once per key. */
+export function painted(key: string, w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) {
+  let t = paintedCache.get(key);
+  if (!t) {
+    const [c, ctx] = canvas(w, h);
+    draw(ctx);
+    t = finish(c);
+    paintedCache.set(key, t);
+  }
+  return t;
+}
