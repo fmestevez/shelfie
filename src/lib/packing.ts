@@ -1,4 +1,4 @@
-import { type Compartment, type ShelfBuild, shelfModel } from "./shelves";
+import { type Compartment, type CustomShelf, type ShelfBuild, shelfModel } from "./shelves";
 import type { SortedGame } from "./sorting";
 
 export type Orientation = "vertical" | "horizontal" | "mixed";
@@ -14,6 +14,7 @@ export interface ShelfSelection {
 
 export interface LayoutConfig {
   shelves: ShelfSelection[];
+  customShelves: CustomShelf[];
   billyCompartments: number;
   orientation: Orientation;
   facing: Facing;
@@ -136,7 +137,14 @@ class Face {
    * `onStacks`: on top of the snuggest existing box first, the floor only if none
    * fits, which keeps floor space for big boxes. `fromRight` packs toward the right.
    */
-  find(w: number, h: number, a: number, b: number, fromRight: boolean, onStacks: boolean): { x: number; y: number } | null {
+  find(
+    w: number,
+    h: number,
+    a: number,
+    b: number,
+    fromRight: boolean,
+    onStacks: boolean,
+  ): { x: number; y: number } | null {
     let best: { x: number; y: number; score: number } | null = null;
     for (const r of this.free) {
       if (r.w < w || r.h < h) continue;
@@ -147,7 +155,8 @@ class Face {
         const better =
           !best ||
           score < best.score - 0.01 ||
-          (Math.abs(score - best.score) <= 0.01 && (r.y < best.y - 0.01 || (Math.abs(r.y - best.y) <= 0.01 && (fromRight ? x > best.x : x < best.x))));
+          (Math.abs(score - best.score) <= 0.01 &&
+            (r.y < best.y - 0.01 || (Math.abs(r.y - best.y) <= 0.01 && (fromRight ? x > best.x : x < best.x))));
         if (better) best = { x, y: r.y, score };
       }
     }
@@ -163,9 +172,11 @@ class Face {
         continue;
       }
       if (rect.x > f.x) next.push({ x: f.x, y: f.y, w: rect.x - f.x, h: f.h });
-      if (rect.x + rect.w < f.x + f.w) next.push({ x: rect.x + rect.w, y: f.y, w: f.x + f.w - rect.x - rect.w, h: f.h });
+      if (rect.x + rect.w < f.x + f.w)
+        next.push({ x: rect.x + rect.w, y: f.y, w: f.x + f.w - rect.x - rect.w, h: f.h });
       if (rect.y > f.y) next.push({ x: f.x, y: f.y, w: f.w, h: rect.y - f.y });
-      if (rect.y + rect.h < f.y + f.h) next.push({ x: f.x, y: rect.y + rect.h, w: f.w, h: f.y + f.h - rect.y - rect.h });
+      if (rect.y + rect.h < f.y + f.h)
+        next.push({ x: f.x, y: rect.y + rect.h, w: f.w, h: f.y + f.h - rect.y - rect.h });
     }
     // Drop slivers and rectangles contained in another (keeping one of any duplicates).
     this.free = next.filter(
@@ -295,18 +306,15 @@ class Bin {
       // Set-back boxes move toward the wall, but never into the row behind them.
       const backLimit = isBack ? c.z : rowFront - row.depth;
       // With several rows, the back row is pushed right against the back panel.
-      const zOf = (Z: number) =>
-        isBack && ri > 0 ? c.z + Z / 2 : Math.max(backLimit + Z, rowFront - setBack) - Z / 2;
-      const out = row.items.map(
-        (it): Placement => ({
-          sg: it.sg,
-          center: [c.x + it.x + it.X / 2, c.y + it.y + it.Y / 2, zOf(it.Z)],
-          size: [it.X, it.Y, it.Z],
-          cover: it.cover,
-          area,
-          hidden: ri > 0,
-        }),
-      );
+      const zOf = (Z: number) => (isBack && ri > 0 ? c.z + Z / 2 : Math.max(backLimit + Z, rowFront - setBack) - Z / 2);
+      const out = row.items.map((it): Placement => ({
+        sg: it.sg,
+        center: [c.x + it.x + it.X / 2, c.y + it.y + it.Y / 2, zOf(it.Z)],
+        size: [it.X, it.Y, it.Z],
+        cover: it.cover,
+        area,
+        hidden: ri > 0,
+      }));
       rowStart += row.depth;
       return out;
     });
@@ -328,7 +336,6 @@ function fitsEmpty(c: Compartment, sg: SortedGame, strategy: Strategy, opts: Fil
   }
   return v;
 }
-
 
 /**
  * Greedily fill one compartment from the front of the queue, trying each strategy
@@ -371,7 +378,9 @@ function fill(c: Compartment, queue: SortedGame[], strategies: Strategy[], opts:
     const big = newBin(c, opts);
     const bigTaken = new Set<number>();
     const prefix = Array.from({ length: i }, (_, k) => k);
-    prefix.sort((p, q) => queue[q].game.dims[0] * queue[q].game.dims[1] - queue[p].game.dims[0] * queue[p].game.dims[1]);
+    prefix.sort(
+      (p, q) => queue[q].game.dims[0] * queue[q].game.dims[1] - queue[p].game.dims[0] * queue[p].game.dims[1],
+    );
     for (const k of prefix) if (big.place(queue[k], strategy)) bigTaken.add(k);
     consider(strategy, big, bigTaken, true);
   }
@@ -384,7 +393,12 @@ function fill(c: Compartment, queue: SortedGame[], strategies: Strategy[], opts:
  * stacks have big boxes at the bottom. Keeps the original packing if they no
  * longer all fit.
  */
-function biggestFirst(c: Compartment, queue: SortedGame[], chosen: { taken: Set<number>; strategy: Strategy }, opts: FillOpts) {
+function biggestFirst(
+  c: Compartment,
+  queue: SortedGame[],
+  chosen: { taken: Set<number>; strategy: Strategy },
+  opts: FillOpts,
+) {
   const games = queue.filter((_, i) => chosen.taken.has(i));
   const groupRank = new Map<string, number>();
   for (const sg of games) {
@@ -416,7 +430,7 @@ export function computeLayout(sorted: SortedGame[], cfg: LayoutConfig): Layout {
   const shelves: ShelfInstance[] = [];
   let x = 0;
   for (const sel of cfg.shelves) {
-    const model = shelfModel(sel.modelId);
+    const model = shelfModel(sel.modelId, cfg.customShelves);
     for (let i = 0; i < sel.count; i++) {
       const build = model.build({ billyCompartments: cfg.billyCompartments });
       shelves.push({ key: `${sel.modelId}-${i}-${shelves.length}`, modelId: sel.modelId, offsetX: x, build });
@@ -520,4 +534,46 @@ export function computeLayout(sorted: SortedGame[], cfg: LayoutConfig): Layout {
     stats: { onShelf, onTop, onFloor, fill: shelfVolume ? usedVolume / shelfVolume : 0 },
     width,
   };
+}
+
+/**
+ * Every game in piles on the floor in front of the shelves, in sorted order
+ * (the starting point of manual mode). Piles fill rows left to right, front
+ * rows further from the wall.
+ */
+export function floorLayout(sorted: SortedGame[], facing: Facing, shelvesWidth: number): Placement[] {
+  const opts: FillOpts = { multiRow: false, facing, lookahead: Infinity, overhang: 0, keepOrder: false };
+  const volume = sorted.reduce((s, sg) => s + sg.game.dims[0] * sg.game.dims[1] * sg.game.dims[2], 0);
+  // Low piles, so they don't hide the shelves behind them.
+  const pileH = 36;
+  const pileVolume = FLOOR_AREA.w * pileH * FLOOR_AREA.d * 0.5;
+  const pitch = FLOOR_AREA.w + 6;
+  // Roughly twice as wide as deep, and at least as wide as the shelves.
+  const cols = Math.max(Math.ceil(shelvesWidth / pitch), Math.ceil(Math.sqrt((2 * volume) / pileVolume)), 3);
+
+  const placements: Placement[] = [];
+  let queue = sorted;
+  let z = 60;
+  while (queue.length) {
+    let x = (-cols * pitch) / 2 + 3;
+    let rowDepth = FLOOR_AREA.d;
+    for (let i = 0; i < cols && queue.length; i++) {
+      const [a, b] = queue[0].game.dims;
+      const c: Compartment = {
+        x,
+        y: 0,
+        z,
+        w: Math.max(FLOOR_AREA.w, a + 1),
+        h: FLOOR_AREA.h,
+        d: Math.max(FLOOR_AREA.d, b + 1),
+      };
+      const { bin, rest } = fill(c, queue, ["horizontal"], opts);
+      placements.push(...bin.toPlacements("floor"));
+      queue = rest;
+      x += c.w + 6;
+      rowDepth = Math.max(rowDepth, c.d);
+    }
+    z += rowDepth + 12;
+  }
+  return placements;
 }

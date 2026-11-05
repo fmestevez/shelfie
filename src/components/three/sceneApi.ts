@@ -38,6 +38,8 @@ export function createSceneApi(ctx: {
   controls: OrbitControlsImpl;
   invalidate: () => void;
   layout: Layout;
+  /** Every box, for framing the whole collection. */
+  boxes: { center: [number, number, number]; size: [number, number, number] }[];
   span: number;
 }): SceneApi {
   const { gl, scene, camera, controls, invalidate } = ctx;
@@ -115,7 +117,7 @@ export function createSceneApi(ctx: {
         box.expandByPoint(new THREE.Vector3(s.offsetX, 0, 0));
         box.expandByPoint(new THREE.Vector3(s.offsetX + s.build.width, s.build.height, s.build.depth));
       }
-      for (const p of ctx.layout.placements) {
+      for (const p of ctx.boxes) {
         const half = new THREE.Vector3(...p.size).multiplyScalar(0.5);
         const c = new THREE.Vector3(...p.center);
         box.expandByPoint(c.clone().sub(half));

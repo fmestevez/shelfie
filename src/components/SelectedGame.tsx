@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { proxied } from "@/lib/images";
+import type { BodySpec } from "@/lib/bodies";
 import type { Layout } from "@/lib/packing";
+import { physicsApi } from "./three/physicsApi";
 import { editsOf, useStore } from "@/lib/store";
 import type { Dims, DimsSource, Game, VersionInfo } from "@/lib/types";
 
@@ -66,7 +68,8 @@ function SizeEditor({ game }: { game: Game }) {
     if (v.dims) setDraft(v.dims.map(String));
   };
 
-  const input = "w-full min-w-0 rounded-md bg-white/10 px-2 py-1 text-xs tabular-nums text-white outline-none focus:ring-2 focus:ring-amber-400";
+  const input =
+    "w-full min-w-0 rounded-md bg-white/10 px-2 py-1 text-xs tabular-nums text-white outline-none focus:ring-2 focus:ring-amber-400";
 
   return (
     <div className="space-y-2 border-t border-white/10 px-3 py-3 text-xs">
@@ -82,7 +85,8 @@ function SizeEditor({ game }: { game: Game }) {
             <option value="">{versions ? "Automatic" : "Loading versions…"}</option>
             {versions?.map((v) => (
               <option key={v.id} value={v.id}>
-                {[v.name ?? `#${v.id}`, v.year].filter(Boolean).join(" · ")} — {v.dims ? `${fmt(v.dims)} cm` : "no size"}
+                {[v.name ?? `#${v.id}`, v.year].filter(Boolean).join(" · ")} —{" "}
+                {v.dims ? `${fmt(v.dims)} cm` : "no size"}
               </option>
             ))}
           </select>
@@ -137,13 +141,35 @@ function SizeEditor({ game }: { game: Game }) {
   );
 }
 
-export function SelectedGame({ layout }: { layout: Layout }) {
+function RotateButtons({ collId }: { collId: number }) {
+  const btn = "flex-1 rounded-md bg-white/10 px-2 py-1.5 text-xs text-white hover:bg-white/20";
+  return (
+    <div className="border-t border-white/10 px-3 py-2">
+      <div className="flex gap-1.5">
+        <button type="button" className={btn} onClick={() => physicsApi.current?.turn(collId)} title="Shortcut: R">
+          ⟳ Turn
+        </button>
+        <button type="button" className={btn} onClick={() => physicsApi.current?.tip(collId)} title="Shortcut: T">
+          ⤾ Stand up / lay down
+        </button>
+      </div>
+      <div className="mt-1.5 text-[11px] text-white/40">
+        Drag the box to move it. R and T rotate it while you hold it.
+      </div>
+    </div>
+  );
+}
+
+export function SelectedGame({ layout, bodies }: { layout: Layout; bodies: BodySpec[] | null }) {
   const selectedId = useStore((s) => s.selectedId);
   const set = useStore((s) => s.set);
   const removeGame = useStore((s) => s.removeGame);
-  const p = layout.placements.find((x) => x.sg.game.collId === selectedId);
-  if (!p) return null;
-  const { game, area, group } = p.sg;
+  const placement = layout.placements.find((x) => x.sg.game.collId === selectedId);
+  // With bodies, boxes go wherever they're moved: the packed position no longer applies.
+  const sg = bodies ? bodies.find((b) => b.sg.game.collId === selectedId)?.sg : placement?.sg;
+  if (!sg) return null;
+  const p = bodies ? null : placement;
+  const { game, area, group } = sg;
 
   return (
     <div className="pointer-events-auto absolute right-4 top-14 z-10 md:top-4 max-h-[calc(100%-9.5rem)] w-[min(340px,calc(100vw-2rem))] overflow-y-auto rounded-xl bg-neutral-900/90 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur">
@@ -155,7 +181,12 @@ export function SelectedGame({ layout }: { layout: Layout }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-semibold leading-tight">{game.name}</h3>
-            <button type="button" onClick={() => set({ selectedId: null })} className="text-white/50 hover:text-white" aria-label="Close">
+            <button
+              type="button"
+              onClick={() => set({ selectedId: null })}
+              className="text-white/50 hover:text-white"
+              aria-label="Close"
+            >
               ✕
             </button>
           </div>
@@ -168,13 +199,16 @@ export function SelectedGame({ layout }: { layout: Layout }) {
             {fmt(game.dims)} cm
             <div className="text-white/45">
               from {SOURCE_LABEL[game.dimsSource]}
-              {game.versionName && game.dimsSource !== "default" && game.dimsSource !== "custom" && ` (${game.versionName})`}
+              {game.versionName &&
+                game.dimsSource !== "default" &&
+                game.dimsSource !== "custom" &&
+                ` (${game.versionName})`}
             </div>
           </div>
           <div className="mt-2 flex items-center justify-between text-xs">
             <span className="text-white/50">
-              {AREA_LABEL[p.area]}
-              {p.hidden && " · back row"}
+              {p && AREA_LABEL[p.area]}
+              {p?.hidden && " · back row"}
             </span>
             {game.id > 0 && (
               <a
@@ -189,6 +223,7 @@ export function SelectedGame({ layout }: { layout: Layout }) {
           </div>
         </div>
       </div>
+      {bodies && <RotateButtons collId={game.collId} />}
       <SizeEditor key={game.collId} game={game} />
       <div className="border-t border-white/10 px-3 py-2">
         <button type="button" onClick={() => removeGame(game.collId)} className="text-xs text-red-300 hover:underline">

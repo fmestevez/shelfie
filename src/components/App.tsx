@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { computeColors, loadCollection } from "@/lib/loadCollection";
 import { useShallow } from "zustand/react/shallow";
+import { manualBodies, packedBodies } from "@/lib/bodies";
 import { computeLayout } from "@/lib/packing";
 import { sortGames } from "@/lib/sorting";
 import { applyEdits } from "@/lib/edits";
@@ -27,6 +28,7 @@ function useLayout() {
       separateAreas: s.separateAreas,
       overhang: s.overhang,
       shelves: s.shelves,
+      customShelves: s.customShelves,
       billyCompartments: s.billyCompartments,
       orientation: s.orientation,
       facing: s.facing,
@@ -50,6 +52,7 @@ function useLayout() {
     () =>
       computeLayout(sorted, {
         shelves: s.shelves,
+        customShelves: s.customShelves,
         billyCompartments: s.billyCompartments,
         orientation: s.orientation,
         facing: s.facing,
@@ -63,6 +66,7 @@ function useLayout() {
     [
       sorted,
       s.shelves,
+      s.customShelves,
       s.billyCompartments,
       s.orientation,
       s.facing,
@@ -74,11 +78,21 @@ function useLayout() {
       s.sortBy,
     ],
   );
-  return { games, layout };
+  const mode = useStore((s) => s.mode);
+  const seed = useStore((s) => s.physicsSeed);
+  const username = useStore((s) => s.username);
+  const bodies = useMemo(() => {
+    if (mode === "physics") return packedBodies(layout);
+    if (mode !== "manual") return null;
+    // Saved poses are read once per world: the world itself is the live state, and saves shouldn't rebuild it.
+    return manualBodies(sorted, useStore.getState().manual[username], s.facing, layout.width);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed rebuilds the world on reset
+  }, [mode, layout, sorted, username, s.facing, seed]);
+  return { games, sorted, layout, bodies };
 }
 
 export default function App() {
-  const { games, layout } = useLayout();
+  const { games, sorted, layout, bodies } = useLayout();
   const [open, setOpen] = useState(true);
 
   // Picking a version can change the box art; analyse any art we haven't seen.
@@ -100,10 +114,10 @@ export default function App() {
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <Sidebar games={games} layout={layout} />
+        <Sidebar games={games} sorted={sorted} layout={layout} />
       </aside>
       <main className="relative min-w-0 flex-1">
-        <Scene layout={layout} />
+        <Scene layout={layout} bodies={bodies} />
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -111,7 +125,7 @@ export default function App() {
         >
           {open ? "Hide settings" : "Settings"}
         </button>
-        <SelectedGame layout={layout} />
+        <SelectedGame layout={layout} bodies={bodies} />
         <CameraPad />
       </main>
     </div>

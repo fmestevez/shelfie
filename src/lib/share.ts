@@ -1,12 +1,14 @@
 "use client";
 
 import { fetchAddedGames, loadCollection, loadDemo } from "./loadCollection";
+import type { CustomShelf } from "./shelves";
 import { editsOf, useStore } from "./store";
 import type { CollectionEdits, Dims, GameOverride } from "./types";
 
 /** Settings that travel with a share link. */
 const SETTINGS = [
   "shelves",
+  "customShelves",
   "billyCompartments",
   "finish",
   "areaBy",
@@ -97,6 +99,12 @@ export function applyShareLink(): boolean {
   const overrides: Record<number, GameOverride> = {};
   for (const [id, dims, versionId, versionName] of payload.o ?? []) {
     overrides[id] = { dims, versionId, versionName, dimsSource: versionId ? "chosen-version" : "custom" };
+  }
+  // Keep the viewer's own custom shelves alongside the shared ones.
+  if (Array.isArray(settings.customShelves)) {
+    const shared = settings.customShelves as CustomShelf[];
+    const own = useStore.getState().customShelves.filter((c) => !shared.some((x) => x.id === c.id));
+    settings.customShelves = [...own, ...shared];
   }
   const edits: CollectionEdits = { overrides, removed: payload.r ?? [], added: [] };
   set({ ...settings, edits: { ...useStore.getState().edits, [payload.u]: edits }, selectedId: null });

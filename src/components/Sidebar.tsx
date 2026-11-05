@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { addGameFromBgg, loadCollection, loadDemo } from "@/lib/loadCollection";
 import { shareUrl } from "@/lib/share";
 import { type ExportMode, sceneApi } from "./three/sceneApi";
 import type { Layout, Orientation, OverflowMode } from "@/lib/packing";
-import { SHELF_MODELS } from "@/lib/shelves";
-import { AREA_OPTIONS, type AreaKey, SORT_OPTIONS, type SortKey } from "@/lib/sorting";
-import { editsOf, type EnvironmentId, useStore } from "@/lib/store";
+import { CUSTOM_SHELF_DEFAULTS, type CustomShelf, customCell, customShelfModel, SHELF_MODELS } from "@/lib/shelves";
+import { AREA_OPTIONS, type AreaKey, SORT_OPTIONS, type SortedGame, type SortKey } from "@/lib/sorting";
+import { manualStats } from "@/lib/bodies";
+import { editsOf, type EnvironmentId, type Mode, useStore } from "@/lib/store";
 import type { Game, SearchResult } from "@/lib/types";
 import { ENVIRONMENTS } from "./three/Room";
 import { Field, Section, Segmented, SortDirection, Stepper, Toggle } from "./ui";
@@ -254,24 +255,178 @@ function EditsSummary() {
   );
 }
 
+const CUSTOM_FIELDS: {
+  key: keyof Omit<CustomShelf, "id" | "name" | "back">;
+  label: string;
+  step: string;
+  int?: boolean;
+}[] = [
+  { key: "width", label: "Width", step: "0.5" },
+  { key: "height", label: "Height", step: "0.5" },
+  { key: "depth", label: "Depth", step: "0.5" },
+  { key: "cols", label: "Columns", step: "1", int: true },
+  { key: "rows", label: "Rows", step: "1", int: true },
+  { key: "board", label: "Boards", step: "0.1" },
+  { key: "plinth", label: "Plinth", step: "0.5" },
+];
+
+const newShelfId = () => `custom-${Date.now().toString(36)}`;
+const round1 = (x: number) => Math.round(x * 10) / 10;
+
+function CustomShelfEditor({ initial, onDone }: { initial: CustomShelf | null; onDone: () => void }) {
+  const save = useStore((s) => s.saveCustomShelf);
+  const [name, setName] = useState(initial?.name ?? CUSTOM_SHELF_DEFAULTS.name);
+  const [back, setBack] = useState(initial?.back ?? CUSTOM_SHELF_DEFAULTS.back);
+  const [draft, setDraft] = useState(() =>
+    Object.fromEntries(CUSTOM_FIELDS.map((f) => [f.key, String((initial ?? CUSTOM_SHELF_DEFAULTS)[f.key])])),
+  );
+
+  const values = Object.fromEntries(CUSTOM_FIELDS.map((f) => [f.key, Number(draft[f.key])])) as Record<
+    (typeof CUSTOM_FIELDS)[number]["key"],
+    number
+  >;
+  const inRange =
+    CUSTOM_FIELDS.every((f) => Number.isFinite(values[f.key]) && (!f.int || Number.isInteger(values[f.key]))) &&
+    values.width <= 1000 &&
+    values.height <= 400 &&
+    values.depth <= 150 &&
+    values.cols >= 1 &&
+    values.cols <= 20 &&
+    values.rows >= 1 &&
+    values.rows <= 20 &&
+    values.board >= 0.5 &&
+    values.board <= 10 &&
+    values.plinth >= 0;
+  const shelf = { ...values, back };
+  const cell = inRange ? customCell(shelf) : null;
+  const input =
+    "w-full min-w-0 rounded-md bg-white/10 px-2 py-1 text-xs tabular-nums text-white outline-none focus:ring-2 focus:ring-amber-400";
+
+  return (
+    <form
+      className="space-y-2 rounded-lg bg-white/5 p-3 text-xs"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!cell) return;
+        save({ id: initial?.id ?? newShelfId(), name: name.trim() || "Custom shelf", ...shelf });
+        onDone();
+      }}
+    >
+      <label className="block">
+        <span className="mb-1 block text-white/50">Name</span>
+        <input value={name} maxLength={40} onChange={(e) => setName(e.target.value)} className={input} />
+      </label>
+      <div className="grid grid-cols-3 gap-2">
+        {CUSTOM_FIELDS.map((f) => (
+          <label key={f.key} className="block">
+            <span className="mb-1 block text-white/50">
+              {f.label}
+              {!f.int && " (cm)"}
+            </span>
+            <input
+              type="number"
+              inputMode={f.int ? "numeric" : "decimal"}
+              step={f.step}
+              min="0"
+              value={draft[f.key]}
+              onChange={(e) => setDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+              className={input}
+            />
+          </label>
+        ))}
+      </div>
+      <Toggle label="Back panel" checked={back} onChange={setBack} />
+      <div className={cell ? "text-white/50" : "text-red-300"}>
+        {cell
+          ? `${values.cols * values.rows} compartments of ${round1(cell.w)} × ${round1(cell.h)} cm, ${round1(cell.d)} cm deep`
+          : "These measurements leave no room for compartments."}
+      </div>
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onDone} className="rounded-md px-2 py-1 text-white/60 hover:text-white">
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={!cell}
+          className="rounded-md bg-amber-400 px-3 py-1 font-semibold text-black disabled:opacity-30"
+        >
+          {initial ? "Save" : "Add shelf"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ShelfRow({
+  name,
+  description,
+  id,
+  children,
+}: {
+  name: string;
+  description: string;
+  id: string;
+  children?: ReactNode;
+}) {
+  const s = useStore();
+  const count = s.shelves.find((x) => x.modelId === id)?.count ?? 0;
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0">
+        <div className="truncate text-sm text-white">{name}</div>
+        <div className="text-[11px] text-white/40">{description}</div>
+        {children}
+      </div>
+      <Stepper value={count} onChange={(n) => s.setShelfCount(id, n)} />
+    </div>
+  );
+}
+
 function ShelvesSection() {
   const s = useStore();
-  const count = (id: string) => s.shelves.find((x) => x.modelId === id)?.count ?? 0;
   const hasBilly = s.shelves.some((x) => x.modelId.startsWith("billy") && x.count > 0);
+  // null: closed, "new": adding, otherwise the id being edited.
+  const [editing, setEditing] = useState<string | null>(null);
 
   return (
     <Section title="Shelves">
       <div className="space-y-2">
         {SHELF_MODELS.map((m) => (
-          <div key={m.id} className="flex items-center justify-between gap-2">
-            <div>
-              <div className="text-sm text-white">{m.name}</div>
-              <div className="text-[11px] text-white/40">{m.description}</div>
-            </div>
-            <Stepper value={count(m.id)} onChange={(n) => s.setShelfCount(m.id, n)} />
-          </div>
+          <ShelfRow key={m.id} id={m.id} name={m.name} description={m.description} />
         ))}
+        {s.customShelves.map((c) => {
+          const m = customShelfModel(c);
+          return editing === c.id ? (
+            <CustomShelfEditor key={c.id} initial={c} onDone={() => setEditing(null)} />
+          ) : (
+            <ShelfRow key={c.id} id={c.id} name={m.name} description={m.description}>
+              <div className="mt-0.5 flex gap-3 text-[11px]">
+                <button type="button" onClick={() => setEditing(c.id)} className="text-amber-300/80 hover:underline">
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => s.deleteCustomShelf(c.id)}
+                  className="text-red-300/80 hover:underline"
+                >
+                  Delete
+                </button>
+              </div>
+            </ShelfRow>
+          );
+        })}
       </div>
+      {editing === "new" ? (
+        <CustomShelfEditor initial={null} onDone={() => setEditing(null)} />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing("new")}
+          className="w-full rounded-lg border border-dashed border-white/20 py-2 text-xs text-white/70 hover:border-amber-400 hover:text-white"
+        >
+          + Custom shelf
+        </button>
+      )}
       {hasBilly && (
         <Field label="Billy compartments per unit" hint="Fewer compartments = taller gaps between shelves.">
           <Segmented
@@ -343,88 +498,96 @@ function ArrangementSection() {
           <SortDirection reversed={s.sortReversed} onChange={(v) => s.set({ sortReversed: v })} />
         </div>
       </Field>
-      <Field
-        label="Box orientation"
-        hint={
-          s.orientation === "mixed"
-            ? "Stands big boxes up and stacks small ones, whichever fits more per compartment."
-            : undefined
-        }
-      >
-        <Segmented<Orientation>
-          value={s.orientation}
-          options={[
-            { value: "vertical", label: "Vertical" },
-            { value: "horizontal", label: "Stacked" },
-            { value: "mixed", label: "Mixed" },
-          ]}
-          onChange={(v) => s.set({ orientation: v })}
-        />
-      </Field>
-      {s.orientation !== "horizontal" && (
-        <Field label="Upright boxes: cover faces">
-          <Segmented
-            value={s.facing}
-            options={[
-              { value: "left", label: "← Left" },
-              { value: "right", label: "Right →" },
-            ]}
-            onChange={(v) => s.set({ facing: v })}
-          />
-        </Field>
-      )}
-      <Field label="Depth">
-        <Segmented
-          value={s.multiRow ? "multi" : "single"}
-          options={[
-            { value: "single", label: "Single row" },
-            { value: "multi", label: "Rows behind rows" },
-          ]}
-          onChange={(v) => s.set({ multiRow: v === "multi" })}
-        />
-      </Field>
-      <Field label={`Front edge · ${overhangLabel(s.overhang)}`}>
-        <input
-          type="range"
-          min={MIN_OVERHANG}
-          max={10}
-          step={1}
-          value={s.overhang}
-          onChange={(e) => s.set({ overhang: Number(e.target.value) })}
-          className="w-full accent-amber-400"
-        />
-        <div className="flex justify-between text-[10px] text-white/35">
-          <span>pushed back</span>
-          <span>flush</span>
-          <span>sticks out</span>
+      {s.mode === "manual" ? (
+        <div className="text-[11px] leading-snug text-white/40">
+          In manual mode the order sets how the piles on the floor are laid out, before you move anything.
         </div>
-      </Field>
-      <Field
-        label={`Order vs. space · ${look === 0 ? "strict order" : look >= MAX_LOOKAHEAD ? "pack as tight as possible" : `may skip ${look} games to fill gaps`}`}
-      >
-        <input
-          type="range"
-          min={0}
-          max={MAX_LOOKAHEAD}
-          value={look}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            s.set({ lookahead: n >= MAX_LOOKAHEAD ? 10_000 : n }); // "unlimited"
-          }}
-          className="w-full accent-amber-400"
-        />
-      </Field>
-      <Field label="Overflow goes">
-        <Segmented<OverflowMode>
-          value={s.overflow}
-          options={[
-            { value: "top", label: "On top" },
-            { value: "floor", label: "Floor" },
-            { value: "top-floor", label: "Top, then floor" },
-          ]}
-          onChange={(v) => s.set({ overflow: v })}
-        />
-      </Field>
+      ) : (
+        <>
+          <Field
+            label="Box orientation"
+            hint={
+              s.orientation === "mixed"
+                ? "Stands big boxes up and stacks small ones, whichever fits more per compartment."
+                : undefined
+            }
+          >
+            <Segmented<Orientation>
+              value={s.orientation}
+              options={[
+                { value: "vertical", label: "Vertical" },
+                { value: "horizontal", label: "Stacked" },
+                { value: "mixed", label: "Mixed" },
+              ]}
+              onChange={(v) => s.set({ orientation: v })}
+            />
+          </Field>
+          {s.orientation !== "horizontal" && (
+            <Field label="Upright boxes: cover faces">
+              <Segmented
+                value={s.facing}
+                options={[
+                  { value: "left", label: "← Left" },
+                  { value: "right", label: "Right →" },
+                ]}
+                onChange={(v) => s.set({ facing: v })}
+              />
+            </Field>
+          )}
+          <Field label="Depth">
+            <Segmented
+              value={s.multiRow ? "multi" : "single"}
+              options={[
+                { value: "single", label: "Single row" },
+                { value: "multi", label: "Rows behind rows" },
+              ]}
+              onChange={(v) => s.set({ multiRow: v === "multi" })}
+            />
+          </Field>
+          <Field label={`Front edge · ${overhangLabel(s.overhang)}`}>
+            <input
+              type="range"
+              min={MIN_OVERHANG}
+              max={10}
+              step={1}
+              value={s.overhang}
+              onChange={(e) => s.set({ overhang: Number(e.target.value) })}
+              className="w-full accent-amber-400"
+            />
+            <div className="flex justify-between text-[10px] text-white/35">
+              <span>pushed back</span>
+              <span>flush</span>
+              <span>sticks out</span>
+            </div>
+          </Field>
+          <Field
+            label={`Order vs. space · ${look === 0 ? "strict order" : look >= MAX_LOOKAHEAD ? "pack as tight as possible" : `may skip ${look} games to fill gaps`}`}
+          >
+            <input
+              type="range"
+              min={0}
+              max={MAX_LOOKAHEAD}
+              value={look}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                s.set({ lookahead: n >= MAX_LOOKAHEAD ? 10_000 : n }); // "unlimited"
+              }}
+              className="w-full accent-amber-400"
+            />
+          </Field>
+          <Field label="Overflow goes">
+            <Segmented<OverflowMode>
+              value={s.overflow}
+              options={[
+                { value: "top", label: "On top" },
+                { value: "floor", label: "Floor" },
+                { value: "top-floor", label: "Top, then floor" },
+              ]}
+              onChange={(v) => s.set({ overflow: v })}
+            />
+          </Field>
+        </>
+      )}
     </Section>
   );
 }
@@ -454,10 +617,14 @@ function SceneSection() {
   );
 }
 
-function StatsSection({ layout }: { layout: Layout }) {
-  const { stats, unplaced } = layout;
+function StatsSection({ layout, sorted }: { layout: Layout; sorted: SortedGame[] }) {
+  const mode = useStore((s) => s.mode);
+  const poses = useStore((s) => s.manual[s.username]);
+  const manual = mode === "manual";
+  const stats = manual ? manualStats(sorted, poses, layout.shelves) : layout.stats;
+  const unplaced = manual ? [] : layout.unplaced;
   const groups: { area: string; name: string; count: number }[] = [];
-  for (const p of layout.placements) {
+  for (const p of manual ? [] : layout.placements) {
     const { area, group } = p.sg;
     const last = groups.at(-1);
     if (last && last.name === group && last.area === area) last.count++;
@@ -615,7 +782,89 @@ function ExportButton() {
   );
 }
 
-export function Sidebar({ games, layout }: { games: Game[]; layout: Layout }) {
+const MODE_HINT: Record<Mode, string> = {
+  auto: "Shelfie packs every box for you.",
+  physics: "The packed shelves with real gravity: drag boxes to move or throw them.",
+  manual: "Every game starts on the floor. Drag each box onto the shelves; Shelfie remembers where you put it.",
+};
+
+function ModeSection() {
+  const mode = useStore((s) => s.mode);
+  const set = useStore((s) => s.set);
+  const resetPhysics = useStore((s) => s.resetPhysics);
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <Section title="Mode">
+      <Field label="Who places the boxes" hint={MODE_HINT[mode]}>
+        <Segmented<Mode>
+          value={mode}
+          options={[
+            { value: "auto", label: "Auto" },
+            { value: "physics", label: "Physics" },
+            { value: "manual", label: "Manual" },
+          ]}
+          onChange={(v) => {
+            setConfirming(false);
+            set({ mode: v, selectedId: null, hoveredId: null });
+          }}
+        />
+      </Field>
+      {mode !== "auto" && (
+        <div className="space-y-1.5 text-[11px] leading-snug text-white/45">
+          <p>
+            Drag a box to pick it up. Over a compartment it slides in until it meets the back or another box; elsewhere
+            it lands on whatever is below. Press R to turn it and T to stand it up or lay it down, or use the buttons on
+            the game&apos;s card.
+          </p>
+          <p>Drag empty space to move the camera.</p>
+        </div>
+      )}
+      {mode === "physics" && (
+        <button
+          type="button"
+          onClick={resetPhysics}
+          className="w-full rounded-lg bg-white/10 py-2 text-xs text-white hover:bg-white/20"
+        >
+          Repack the shelves
+        </button>
+      )}
+      {mode === "manual" &&
+        (confirming ? (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="flex-1 text-white/70">Move every box back to the floor?</span>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="px-2 py-1 text-white/60 hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                resetPhysics();
+                setConfirming(false);
+              }}
+              className="rounded-md bg-red-400 px-2 py-1 font-semibold text-black"
+            >
+              Reset
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            className="w-full rounded-lg bg-white/10 py-2 text-xs text-white hover:bg-white/20"
+          >
+            Put everything back on the floor
+          </button>
+        ))}
+    </Section>
+  );
+}
+
+export function Sidebar({ games, sorted, layout }: { games: Game[]; sorted: SortedGame[]; layout: Layout }) {
   return (
     <>
       <div className="px-4 pb-2 pt-5">
@@ -634,7 +883,8 @@ export function Sidebar({ games, layout }: { games: Game[]; layout: Layout }) {
         <p className="text-xs text-white/50">Your BoardGameGeek collection, packed onto real shelves.</p>
       </div>
       <CollectionSection games={games} />
-      {games.length > 0 && <StatsSection layout={layout} />}
+      {games.length > 0 && <StatsSection layout={layout} sorted={sorted} />}
+      {games.length > 0 && <ModeSection />}
       <ShelvesSection />
       <ArrangementSection />
       <SceneSection />

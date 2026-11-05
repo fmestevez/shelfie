@@ -123,8 +123,113 @@ export const SHELF_MODELS: ShelfModel[] = [
   { id: "kallax-4x4", name: "Kallax 4×4", description: "147 × 147 × 39 cm, 16 cubes", build: kallax(4, 4) },
   { id: "kallax-2x4", name: "Kallax 2×4", description: "77 × 147 × 39 cm, 8 cubes", build: kallax(2, 4) },
   { id: "kallax-1x4", name: "Kallax 1×4", description: "42 × 147 × 39 cm, 4 cubes", build: kallax(1, 4) },
-  { id: "billy-deep", name: "Billy deep", description: "80 × 40 × 202 cm, adjustable shelves", build: billy(80, 40, 202) },
+  {
+    id: "billy-deep",
+    name: "Billy deep",
+    description: "80 × 40 × 202 cm, adjustable shelves",
+    build: billy(80, 40, 202),
+  },
   { id: "billy", name: "Billy", description: "80 × 28 × 202 cm, adjustable shelves", build: billy(80, 28, 202) },
 ];
 
-export const shelfModel = (id: string) => SHELF_MODELS.find((m) => m.id === id) ?? SHELF_MODELS[0];
+/** A user-defined shelf: an outer box split into an even grid of compartments. */
+export interface CustomShelf {
+  id: string;
+  name: string;
+  /** Outer size, cm. */
+  width: number;
+  height: number;
+  depth: number;
+  cols: number;
+  rows: number;
+  /** Thickness of the frame and dividers, cm. */
+  board: number;
+  /** Gap between the floor and the bottom board, cm. */
+  plinth: number;
+  back: boolean;
+}
+
+export const CUSTOM_SHELF_DEFAULTS: Omit<CustomShelf, "id"> = {
+  name: "My shelf",
+  width: 100,
+  height: 180,
+  depth: 35,
+  cols: 2,
+  rows: 5,
+  board: 1.8,
+  plinth: 0,
+  back: true,
+};
+
+const BACK_PANEL = 0.4;
+/** Smallest compartment side, cm; dimensions that would leave less are rejected. */
+export const MIN_CELL = 5;
+
+/** Size of one compartment (w, h, d), or null if the measurements leave no room. */
+export function customCell(c: Omit<CustomShelf, "id" | "name">) {
+  const w = (c.width - (c.cols + 1) * c.board) / c.cols;
+  const h = (c.height - c.plinth - (c.rows + 1) * c.board) / c.rows;
+  const d = c.depth - (c.back ? BACK_PANEL : 0);
+  return w >= MIN_CELL && h >= MIN_CELL && d >= MIN_CELL ? { w, h, d } : null;
+}
+
+function custom(c: CustomShelf): ShelfBuild {
+  const { width, height, depth, cols, rows, board: B, plinth } = c;
+  const cell = customCell(c) ?? { w: MIN_CELL, h: MIN_CELL, d: depth };
+  const z = c.back ? BACK_PANEL : 0;
+  const frameH = height - plinth;
+  const midY = plinth + frameH / 2;
+
+  const panels: Panel[] = [
+    { center: [B / 2, height / 2, depth / 2], size: [B, height, depth] },
+    { center: [width - B / 2, height / 2, depth / 2], size: [B, height, depth] },
+    { center: [width / 2, plinth + B / 2, depth / 2], size: [width - 2 * B, B, depth] },
+    { center: [width / 2, height - B / 2, depth / 2], size: [width - 2 * B, B, depth] },
+  ];
+  if (plinth > 0) panels.push({ center: [width / 2, plinth / 2, depth - 1.5], size: [width - 2 * B, plinth, B] });
+  if (c.back)
+    panels.push({ center: [width / 2, midY, BACK_PANEL / 2], size: [width - 2 * B, frameH - 2 * B, BACK_PANEL] });
+  for (let i = 1; i < cols; i++) {
+    const x = B + i * (cell.w + B) - B / 2;
+    panels.push({ center: [x, midY, (depth + z) / 2], size: [B, frameH - 2 * B, depth - z] });
+  }
+  for (let r = 1; r < rows; r++) {
+    const y = plinth + B + r * (cell.h + B) - B / 2;
+    panels.push({ center: [width / 2, y, (depth + z) / 2], size: [width - 2 * B, B, depth - z] });
+  }
+
+  const compartments: Compartment[] = [];
+  for (let r = rows - 1; r >= 0; r--) {
+    for (let i = 0; i < cols; i++) {
+      compartments.push({
+        x: B + i * (cell.w + B),
+        y: plinth + B + r * (cell.h + B),
+        z,
+        w: cell.w,
+        h: cell.h,
+        d: cell.d,
+      });
+    }
+  }
+  return { width, height, depth, panels, compartments };
+}
+
+const round = (x: number) => Math.round(x * 10) / 10;
+
+export function customShelfModel(c: CustomShelf): ShelfModel {
+  const cell = customCell(c);
+  return {
+    id: c.id,
+    name: c.name || "Custom shelf",
+    description: `${round(c.width)} × ${round(c.height)} × ${round(c.depth)} cm, ${c.cols * c.rows} compartments${
+      cell ? ` of ${round(cell.w)} × ${round(cell.h)}` : ""
+    }`,
+    build: () => custom(c),
+  };
+}
+
+export function shelfModel(id: string, customShelves: CustomShelf[] = []): ShelfModel {
+  const c = customShelves.find((x) => x.id === id);
+  if (c) return customShelfModel(c);
+  return SHELF_MODELS.find((m) => m.id === id) ?? SHELF_MODELS[0];
+}

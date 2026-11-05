@@ -13,6 +13,7 @@ Enter a BGG username and Shelfie fetches the games you own, works out each box's
   - the version you selected on BGG, otherwise the earliest-released version, otherwise any version that lists a size, otherwise 30 × 21 × 7 cm;
   - you can pick another version or type a custom size for any game.
 - **Shelves:** Kallax 5×5, 4×4, 2×4 and 1×4; Billy and Billy deep (with adjustable compartments). Any mix and count, in white, black-brown or oak.
+- **Custom shelves:** enter your own outer size, a grid of columns × rows, board thickness, plinth height and back panel; Shelfie shows the compartment size as you type.
 - **Sorting in two levels:**
   - **Areas** (e.g. BGG game type: Wargames, Strategy, Family…), optionally starting each area in a new compartment;
   - **then** theme, mechanic, designer, publisher, series, colour, box size, year, complexity, rating or name;
@@ -25,6 +26,10 @@ Enter a BGG username and Shelfie fetches the games you own, works out each box's
   - **depth:** optional rows behind rows;
   - **front edge:** a slider from "may stick out" to "pushed to the back";
   - **order vs. space:** a slider for how many games may jump ahead to fill gaps.
+- **Modes:**
+  - **Auto:** Shelfie packs everything;
+  - **Physics:** the packed shelves become rigid bodies (Rapier) that you can grab, move and throw;
+  - **Manual:** every game starts in piles on the floor and you drag each box onto the shelves. A box slides into the compartment under the pointer until it meets the back or another box; R / T (or the card's buttons) turn it or stand it up. Positions are saved in the browser.
 - **Overflow:** stacked on top of the shelves, piled on the floor beside them, or both.
 - **Your edits:** remove games, or add games that aren't in your collection (BGG search).
 - **Rooms:** living room, brick loft, game café, white gallery, garden.
@@ -81,6 +86,7 @@ The repo is ready for Vercel (`vercel.ts` holds the project config).
   - each row of boxes is packed as a 2D free-space layout with gravity, and a box must rest at least 60% on boxes no smaller than itself;
   - several strategies are tried per compartment and the one that fits the most wins;
   - games that don't fit go to the overflow areas.
+- `src/components/three/PhysicsWorld.tsx` runs physics and manual modes with `@react-three/rapier`, loaded only when one of them is switched on.
 - `src/components/three/` renders the scene with React Three Fiber:
   - spines are generated from the title over a band of box art;
   - colours come from the most prominent hue of each cover.

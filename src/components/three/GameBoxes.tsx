@@ -6,8 +6,10 @@ import { memo, useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { colorKey } from "@/lib/images";
 import { fallbackColor } from "@/lib/loadCollection";
-import type { Placement } from "@/lib/packing";
+import type { Cover, Placement } from "@/lib/packing";
+import type { SortedGame } from "@/lib/sorting";
 import { useStore } from "@/lib/store";
+import type { Game } from "@/lib/types";
 import { coverTexture, orientCover, spineTexture, titleCover } from "./textures";
 
 const plainCache = new Map<string, THREE.MeshStandardMaterial>();
@@ -33,8 +35,7 @@ const textured = (map: THREE.Texture) => {
 // BoxGeometry material order: +x, -x, +y, -y, +z, -z
 const FACE = { "+x": 0, "-x": 1, "+y": 2 } as const;
 
-interface BoxProps {
-  p: Placement;
+export interface BoxLook {
   color: string;
   hd: boolean;
   maxTex: number;
@@ -42,9 +43,46 @@ interface BoxProps {
   showTitles: boolean;
 }
 
-const GameBox = memo(function GameBox({ p, color, hd, maxTex, showArt, showTitles }: BoxProps) {
-  const { game } = p.sg;
-  const [X, Y, Z] = p.size;
+/** Shared appearance settings for every box in the scene. */
+export function useBoxLook(count: number) {
+  const colors = useStore((s) => s.colors);
+  const hd = useStore((s) => s.hdTextures);
+  const showArt = useStore((s) => s.showArt);
+  const showTitles = useStore((s) => s.showTitles);
+  // Keep GPU memory reasonable for big collections.
+  const maxTex = hd ? (count > 200 ? 320 : 512) : 256;
+  return (game: Game): BoxLook => ({
+    color: colors[colorKey(game)] ?? fallbackColor(game.id),
+    hd,
+    maxTex,
+    showArt,
+    showTitles,
+  });
+}
+
+interface BoxMeshProps extends BoxLook {
+  game: Game;
+  /** Size in the box's own frame; the spine faces +z. */
+  size: [number, number, number];
+  cover: Cover;
+  position?: [number, number, number];
+  onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
+}
+
+/** One textured game box with hover and click selection. */
+export const BoxMesh = memo(function BoxMesh({
+  game,
+  size,
+  cover: coverFace,
+  position,
+  onPointerDown,
+  color,
+  hd,
+  maxTex,
+  showArt,
+  showTitles,
+}: BoxMeshProps) {
+  const [X, Y, Z] = size;
   const [cover, setCover] = useState<THREE.Texture | null>(null);
   const invalidate = useThree((s) => s.invalidate);
   const set = useStore((s) => s.set);
@@ -74,11 +112,11 @@ const GameBox = memo(function GameBox({ p, color, hd, maxTex, showArt, showTitle
     // The cover face: box art, else the title on the box colour, else plain.
     const front = realArt ?? (showTitles ? titleCover(game, color) : null);
     if (front) {
-      const [u, v] = p.cover === "+y" ? [X, Z] : [Z, Y];
-      mats[FACE[p.cover]] = textured(orientCover(front, u, v));
+      const [u, v] = coverFace === "+y" ? [X, Z] : [Z, Y];
+      mats[FACE[coverFace]] = textured(orientCover(front, u, v));
     }
     return mats;
-  }, [game, color, cover, p.cover, X, Y, Z, showArt, showTitles]);
+  }, [game, color, cover, coverFace, X, Y, Z, showArt, showTitles]);
 
   const onOver = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
@@ -89,17 +127,20 @@ const GameBox = memo(function GameBox({ p, color, hd, maxTex, showArt, showTitle
   };
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
+    // A drag that ended over the box isn't a click.
+    if (e.delta > 4) return;
     set({ selectedId: game.collId });
   };
 
   return (
     <mesh
-      position={p.center}
+      position={position}
       material={materials}
       castShadow
       receiveShadow
       onPointerOver={onOver}
       onPointerOut={onOut}
+      onPointerDown={onPointerDown}
       onClick={onClick}
     >
       <boxGeometry args={[X - 0.05, Y - 0.05, Z - 0.05]} />
@@ -107,48 +148,63 @@ const GameBox = memo(function GameBox({ p, color, hd, maxTex, showArt, showTitle
   );
 });
 
+/** Glow around the hovered or selected box, with a name label on hover. */
+export function Highlight({
+  sg,
+  size,
+  position,
+  hovered,
+}: {
+  sg: SortedGame;
+  size: [number, number, number];
+  position?: [number, number, number];
+  hovered: boolean;
+}) {
+  return (
+    // Named so image export can hide it.
+    <group name="highlight" position={position}>
+      <mesh raycast={() => null}>
+        <boxGeometry args={size.map((s) => s + 0.6) as [number, number, number]} />
+        <meshBasicMaterial color="#ffd54a" transparent opacity={0.25} depthWrite={false} />
+      </mesh>
+      {hovered && (
+        <Html position={[0, size[1] / 2 + 4, 0]} center style={{ pointerEvents: "none" }}>
+          <div className="whitespace-nowrap rounded-md bg-black/80 px-2 py-1 text-xs text-white shadow-lg">
+            <div className="font-semibold">{sg.game.name}</div>
+            <div className="text-white/70">{[sg.area, sg.group].filter(Boolean).join(" · ")}</div>
+          </div>
+        </Html>
+      )}
+    </group>
+  );
+}
+
 export function GameBoxes({ placements }: { placements: Placement[] }) {
-  const colors = useStore((s) => s.colors);
-  const hd = useStore((s) => s.hdTextures);
-  const showArt = useStore((s) => s.showArt);
-  const showTitles = useStore((s) => s.showTitles);
+  const look = useBoxLook(placements.length);
   const hoveredId = useStore((s) => s.hoveredId);
   const selectedId = useStore((s) => s.selectedId);
-  // Keep GPU memory reasonable for big collections.
-  const maxTex = hd ? (placements.length > 200 ? 320 : 512) : 256;
 
   const highlight = placements.find((p) => p.sg.game.collId === (hoveredId ?? selectedId));
 
   return (
     <group>
       {placements.map((p) => (
-        <GameBox
+        <BoxMesh
           key={p.sg.game.collId}
-          p={p}
-          color={colors[colorKey(p.sg.game)] ?? fallbackColor(p.sg.game.id)}
-          hd={hd}
-          maxTex={maxTex}
-          showArt={showArt}
-          showTitles={showTitles}
+          game={p.sg.game}
+          size={p.size}
+          cover={p.cover}
+          position={p.center}
+          {...look(p.sg.game)}
         />
       ))}
       {highlight && (
-        <group name="highlight" position={highlight.center}>
-          <mesh raycast={() => null}>
-            <boxGeometry args={highlight.size.map((s) => s + 0.6) as [number, number, number]} />
-            <meshBasicMaterial color="#ffd54a" transparent opacity={0.25} depthWrite={false} />
-          </mesh>
-          {hoveredId === highlight.sg.game.collId && (
-            <Html position={[0, highlight.size[1] / 2 + 4, 0]} center style={{ pointerEvents: "none" }}>
-              <div className="whitespace-nowrap rounded-md bg-black/80 px-2 py-1 text-xs text-white shadow-lg">
-                <div className="font-semibold">{highlight.sg.game.name}</div>
-                <div className="text-white/70">
-                  {[highlight.sg.area, highlight.sg.group].filter(Boolean).join(" · ")}
-                </div>
-              </div>
-            </Html>
-          )}
-        </group>
+        <Highlight
+          sg={highlight.sg}
+          size={highlight.size}
+          position={highlight.center}
+          hovered={hoveredId === highlight.sg.game.collId}
+        />
       )}
     </group>
   );

@@ -2,7 +2,8 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { LayoutConfig, ShelfSelection } from "./packing";
+import type { Cover, LayoutConfig, ShelfSelection } from "./packing";
+import type { CustomShelf } from "./shelves";
 import type { AreaKey, SortKey } from "./sorting";
 import type { CollectionEdits, Game, GameOverride } from "./types";
 
@@ -12,6 +13,18 @@ export const GAMES_VERSION = 2;
 export const COLORS_VERSION = 2;
 
 export type EnvironmentId = "living-room" | "loft" | "cafe" | "gallery" | "garden";
+
+/** auto: packed by Shelfie. physics: the packed result as rigid bodies. manual: you place every box. */
+export type Mode = "auto" | "physics" | "manual";
+
+/** Where a box ended up in manual mode. */
+export interface ManualPose {
+  /** Box size in its own frame, and which face shows the cover (as first laid out). */
+  size: [number, number, number];
+  cover: Cover;
+  position: [number, number, number];
+  quaternion: [number, number, number, number];
+}
 
 export interface LoadProgress {
   message: string;
@@ -43,15 +56,27 @@ interface State extends Omit<LayoutConfig, "shelves" | "keepOrder"> {
   showArt: boolean;
   showTitles: boolean;
 
+  mode: Mode;
+  /** Manual-mode box poses, per username, by collId. */
+  manual: Record<string, Record<number, ManualPose>>;
+  /** Bumped to rebuild the physics world from scratch. */
+  physicsSeed: number;
+
   hoveredId: number | null;
   selectedId: number | null;
 
   set: (patch: Partial<State>) => void;
   setShelfCount: (modelId: string, count: number) => void;
+  /** Adds or updates a custom shelf; a new one is placed once. */
+  saveCustomShelf: (shelf: CustomShelf) => void;
+  deleteCustomShelf: (id: string) => void;
   overrideGame: (collId: number, o: GameOverride | null) => void;
   removeGame: (collId: number) => void;
   restoreGame: (collId: number) => void;
   addGame: (game: Game) => void;
+  saveManualPoses: (poses: Record<number, ManualPose>) => void;
+  /** Back to the floor piles (manual) or the packed layout (physics). */
+  resetPhysics: () => void;
 }
 
 const NO_EDITS: CollectionEdits = { overrides: {}, removed: [], added: [] };
@@ -70,6 +95,7 @@ export const useStore = create<State>()(
       error: null,
 
       shelves: [{ modelId: "kallax-5x5", count: 1 }],
+      customShelves: [],
       billyCompartments: 6,
       finish: "white",
       areaBy: "domain",
@@ -89,6 +115,10 @@ export const useStore = create<State>()(
       showArt: true,
       showTitles: true,
 
+      mode: "auto",
+      manual: {},
+      physicsSeed: 0,
+
       hoveredId: null,
       selectedId: null,
 
@@ -101,6 +131,18 @@ export const useStore = create<State>()(
           if (existing) return { shelves: s.shelves.map((x) => (x.modelId === modelId ? { ...x, count } : x)) };
           return { shelves: [...s.shelves, { modelId, count }] };
         }),
+      saveCustomShelf: (shelf) =>
+        set((s) => {
+          const exists = s.customShelves.some((x) => x.id === shelf.id);
+          return exists
+            ? { customShelves: s.customShelves.map((x) => (x.id === shelf.id ? shelf : x)) }
+            : { customShelves: [...s.customShelves, shelf], shelves: [...s.shelves, { modelId: shelf.id, count: 1 }] };
+        }),
+      deleteCustomShelf: (id) =>
+        set((s) => ({
+          customShelves: s.customShelves.filter((x) => x.id !== id),
+          shelves: s.shelves.filter((x) => x.modelId !== id),
+        })),
 
       overrideGame: (collId, o) =>
         set((s) => {
@@ -129,6 +171,13 @@ export const useStore = create<State>()(
           const e = editsOf(s);
           return { edits: { ...s.edits, [s.username]: { ...e, added: [...e.added, game] } }, selectedId: game.collId };
         }),
+      saveManualPoses: (poses) => set((s) => ({ manual: { ...s.manual, [s.username]: poses } })),
+      resetPhysics: () =>
+        set((s) => {
+          const manual = { ...s.manual };
+          if (s.mode === "manual") delete manual[s.username];
+          return { manual, physicsSeed: s.physicsSeed + 1 };
+        }),
     }),
     {
       name: "shelfie",
@@ -148,10 +197,15 @@ export const useStore = create<State>()(
           "selectedId",
           "set",
           "setShelfCount",
+          "saveCustomShelf",
+          "deleteCustomShelf",
           "overrideGame",
           "removeGame",
           "restoreGame",
           "addGame",
+          "saveManualPoses",
+          "resetPhysics",
+          "physicsSeed",
         ] as const)
           delete rest[k];
         return rest;
