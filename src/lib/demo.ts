@@ -1,0 +1,73 @@
+import type { Dims, Game } from "./types";
+
+// name, year, dims (cm), category, mechanic, designer, publisher, series, weight
+type Row = [string, number, Dims, string, string, string, string, string | null, number];
+
+const ROWS: Row[] = [
+  ["Catan", 1995, [29.6, 29.6, 7.4], "Economic", "Dice Rolling", "Klaus Teuber", "KOSMOS", "Catan", 2.3],
+  ["Catan: Seafarers", 1997, [29.6, 29.6, 7.4], "Economic", "Dice Rolling", "Klaus Teuber", "KOSMOS", "Catan", 2.4],
+  ["Carcassonne", 2000, [29.5, 29.5, 7], "Medieval", "Tile Placement", "Klaus-Jürgen Wrede", "Hans im Glück", "Carcassonne", 1.9],
+  ["Ticket to Ride", 2004, [29.8, 29.8, 7.3], "Trains", "Set Collection", "Alan R. Moon", "Days of Wonder", "Ticket to Ride", 1.8],
+  ["Ticket to Ride: Europe", 2005, [29.8, 29.8, 7.3], "Trains", "Set Collection", "Alan R. Moon", "Days of Wonder", "Ticket to Ride", 1.9],
+  ["Pandemic", 2008, [31, 22.5, 5.5], "Medical", "Cooperative Game", "Matt Leacock", "Z-Man Games", "Pandemic", 2.4],
+  ["Pandemic Legacy: Season 1", 2015, [30, 30, 7.5], "Medical", "Cooperative Game", "Matt Leacock", "Z-Man Games", "Pandemic", 2.8],
+  ["Gloomhaven", 2017, [42, 30, 20], "Fantasy", "Cooperative Game", "Isaac Childres", "Cephalofair Games", null, 3.9],
+  ["Terraforming Mars", 2016, [37, 26.5, 7.5], "Science Fiction", "Engine Building", "Jacob Fryxelius", "FryxGames", null, 3.3],
+  ["Wingspan", 2019, [29.6, 29.6, 9.5], "Animals", "Engine Building", "Elizabeth Hargrave", "Stonemaier Games", "Wingspan", 2.5],
+  ["Scythe", 2016, [37, 30, 10], "Science Fiction", "Area Majority", "Jamey Stegmaier", "Stonemaier Games", null, 3.4],
+  ["Viticulture", 2015, [29.6, 29.6, 8.5], "Farming", "Worker Placement", "Jamey Stegmaier", "Stonemaier Games", null, 2.9],
+  ["Azul", 2017, [26.5, 26.5, 8], "Renaissance", "Pattern Building", "Michael Kiesling", "Plan B Games", "Azul", 1.8],
+  ["Azul: Summer Pavilion", 2019, [26.5, 26.5, 8], "Renaissance", "Pattern Building", "Michael Kiesling", "Plan B Games", "Azul", 2],
+  ["Splendor", 2014, [24, 24, 7], "Renaissance", "Set Collection", "Marc André", "Space Cowboys", null, 1.8],
+  ["7 Wonders", 2010, [30, 30, 7], "Ancient", "Card Drafting", "Antoine Bauza", "Repos Production", "7 Wonders", 2.3],
+  ["7 Wonders Duel", 2015, [20, 20, 6], "Ancient", "Card Drafting", "Antoine Bauza", "Repos Production", "7 Wonders", 2.2],
+  ["Codenames", 2015, [16, 10, 6], "Spies", "Communication Limits", "Vlaada Chvátil", "Czech Games Edition", "Codenames", 1.3],
+  ["Through the Ages", 2015, [30, 30, 7], "Civilization", "Action Points", "Vlaada Chvátil", "Czech Games Edition", null, 4.4],
+  ["Galaxy Trucker", 2007, [30, 30, 7], "Science Fiction", "Real-Time", "Vlaada Chvátil", "Czech Games Edition", null, 2.4],
+  ["Agricola", 2007, [30, 30, 7.5], "Farming", "Worker Placement", "Uwe Rosenberg", "Lookout Games", null, 3.6],
+  ["Patchwork", 2014, [20, 20, 5], "Puzzle", "Tile Placement", "Uwe Rosenberg", "Lookout Games", null, 1.6],
+  ["A Feast for Odin", 2016, [37, 30, 11], "Medieval", "Worker Placement", "Uwe Rosenberg", "Feuerland Spiele", null, 3.9],
+  ["Brass: Birmingham", 2018, [41, 29, 8], "Industry", "Network Building", "Martin Wallace", "Roxley", "Brass", 3.9],
+  ["Brass: Lancashire", 2018, [41, 29, 8], "Industry", "Network Building", "Martin Wallace", "Roxley", "Brass", 3.9],
+  ["Dune: Imperium", 2020, [29.5, 29.5, 7], "Science Fiction", "Deck Building", "Paul Dennen", "Dire Wolf", null, 3],
+  ["Root", 2018, [30, 30, 7], "Animals", "Area Majority", "Cole Wehrle", "Leder Games", null, 3.7],
+  ["Everdell", 2018, [30, 30, 10], "Animals", "Worker Placement", "James A. Wilson", "Starling Games", null, 2.8],
+  ["Love Letter", 2012, [12, 9, 3], "Renaissance", "Hand Management", "Seiji Kanai", "AEG", null, 1.2],
+  ["The Crew", 2019, [12, 9, 3], "Space", "Trick-taking", "Thomas Sing", "KOSMOS", "The Crew", 2],
+  ["The Crew: Mission Deep Sea", 2021, [12, 9, 3], "Nautical", "Trick-taking", "Thomas Sing", "KOSMOS", "The Crew", 2.1],
+  ["Spirit Island", 2017, [30, 30, 10], "Fantasy", "Cooperative Game", "R. Eric Reuss", "Greater Than Games", null, 4],
+  ["Twilight Imperium 4", 2017, [43, 43, 13], "Science Fiction", "Area Majority", "Dane Beltrami", "Fantasy Flight Games", null, 4.3],
+  ["Cascadia", 2021, [25, 25, 7], "Animals", "Tile Placement", "Randy Flynn", "Flatout Games", null, 1.8],
+  ["Sushi Go Party!", 2016, [19, 13, 5], "Card Game", "Card Drafting", "Phil Walker-Harding", "Gamewright", null, 1.3],
+  ["Heat: Pedal to the Metal", 2022, [29.5, 29.5, 7], "Racing", "Hand Management", "Asger Harding Granerud", "Days of Wonder", null, 2.2],
+  ["Ark Nova", 2021, [29.7, 29.7, 7.5], "Animals", "Hand Management", "Mathias Wigge", "Feuerland Spiele", null, 3.8],
+  ["Lost Ruins of Arnak", 2020, [29.5, 29.5, 7.2], "Exploration", "Deck Building", "Elwen", "Czech Games Edition", null, 2.9],
+  ["The Castles of Burgundy", 2011, [30, 21, 7], "Medieval", "Dice Rolling", "Stefan Feld", "alea", null, 3],
+  ["Concordia", 2013, [30, 30, 7], "Ancient", "Hand Management", "Mac Gerdts", "PD-Verlag", null, 3],
+  ["Great Western Trail", 2016, [30, 30, 7], "American West", "Deck Building", "Alexander Pfister", "eggertspiele", null, 3.7],
+  ["Hanabi", 2010, [12, 9, 3], "Card Game", "Cooperative Game", "Antoine Bauza", "R&R Games", null, 1.7],
+];
+
+/** Games without BGG images; covers are generated from the title. */
+export function demoGames(): Game[] {
+  return ROWS.map(([name, year, dims, cat, mech, designer, publisher, series, weight], i) => ({
+    collId: 1000 + i,
+    id: -(i + 1),
+    name,
+    year,
+    isExpansion: false,
+    dims: [...dims].sort((a, b) => b - a) as Dims,
+    dimsSource: "selected-version",
+    categories: [cat],
+    mechanics: [mech],
+    designers: [designer],
+    publishers: [publisher],
+    families: series ? [`Series: ${series}`] : [],
+    domains: [weight >= 3.6 ? "strategygames" : cat === "Fantasy" || cat === "Science Fiction" ? "thematic" : weight < 1.5 ? "partygames" : "familygames"],
+    baseIds: [],
+    weight,
+    rating: 6.5 + ((i * 7) % 20) / 10,
+    image: undefined,
+    thumbnail: undefined,
+  }));
+}
