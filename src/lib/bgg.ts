@@ -84,6 +84,17 @@ function versionDims(v: X): Dims | undefined {
   return cm as Dims;
 }
 
+/** Player counts from the community poll's summary, e.g. "Best with 3–4 players" → [3, 4]. */
+function bestWith(it: X): number[] | undefined {
+  // The parser turns every `name` into an array (games have many names), attributes included.
+  const named = (x: X, n: string) => [x.name].flat().includes(n);
+  const summaries: X[] = [it["poll-summary"] ?? []].flat();
+  const results: X[] = [summaries.find((p) => named(p, "suggested_numplayers"))?.result ?? []].flat();
+  const text = str(results.find((r) => named(r, "bestwith"))?.value);
+  const counts = text?.match(/\d+/g)?.map(Number);
+  return counts?.length ? counts : undefined;
+}
+
 /** Versions ordered by release year (unknown last), then by BGG id (≈ creation order). */
 function parseVersions(it: X): VersionInfo[] {
   const raw: X[] = it.versions?.item ?? [];
@@ -102,7 +113,8 @@ function parseVersions(it: X): VersionInfo[] {
 export async function fetchCollection(
   username: string,
 ): Promise<{ queued: true } | { queued: false; items: CollectionItem[] }> {
-  const q = new URLSearchParams({ username, own: "1", version: "1" });
+  // stats=1 adds the owner's own rating; numplays comes with every item.
+  const q = new URLSearchParams({ username, own: "1", version: "1", stats: "1" });
   const { status, text } = await bggFetch(`/collection?${q}`);
   if (status === 202) return { queued: true };
   const doc = parser.parse(text);
@@ -129,6 +141,8 @@ export async function fetchCollection(
             thumbnail: str(v.thumbnail),
           }
         : undefined,
+      plays: Number(str(it.numplays) ?? 0) || 0,
+      myRating: num(it.stats?.rating),
     };
   });
   return { queued: false, items };
@@ -173,6 +187,9 @@ export async function fetchThings(ids: number[]): Promise<ThingInfo[]> {
       rating: num(ratings?.average),
       minPlayers: num(it.minplayers),
       maxPlayers: num(it.maxplayers),
+      artists: of("boardgameartist").filter((a) => a !== "(Uncredited)"),
+      playTime: num(it.playingtime) ?? num(it.maxplaytime),
+      bestWith: bestWith(it),
       latestVersionWithDims: latest ? { id: latest.id, name: latest.name, dims: latest.dims! } : undefined,
     };
   });

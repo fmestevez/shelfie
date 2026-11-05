@@ -8,7 +8,7 @@ import type { AreaKey, GroupKey, GroupPref, GroupPrefs, SortKey } from "./sortin
 import type { CollectionEdits, Game, GameOverride } from "./types";
 
 /** Bump when the shape of saved games changes, so old saves are refetched. */
-export const GAMES_VERSION = 3;
+export const GAMES_VERSION = 4;
 /** Bump when the colour analysis changes, so saved colours are recomputed. */
 export const COLORS_VERSION = 2;
 

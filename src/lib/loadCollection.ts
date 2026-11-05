@@ -60,6 +60,11 @@ function merge(item: CollectionItem, thing: ThingInfo | undefined): Game {
     rating: thing?.rating,
     minPlayers: thing?.minPlayers,
     maxPlayers: thing?.maxPlayers,
+    artists: thing?.artists ?? [],
+    playTime: thing?.playTime,
+    bestWith: thing?.bestWith,
+    plays: item.plays,
+    myRating: item.myRating,
   };
 }
 

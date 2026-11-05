@@ -67,6 +67,13 @@ export function demoGames(): Game[] {
     baseIds: [],
     weight,
     rating: 6.5 + ((i * 7) % 20) / 10,
+    minPlayers: 1 + (i % 2),
+    maxPlayers: [2, 4, 4, 5, 6, 8][i % 6],
+    playTime: Math.round(20 + weight * weight * 15),
+    bestWith: [[2], [3, 4], [4], [2, 3], [3]][i % 5],
+    plays: [0, 1, 3, 7, 15, 0, 2][i % 7],
+    myRating: i % 4 === 0 ? undefined : 6 + (i % 5),
+    artists: [],
     image: undefined,
     thumbnail: undefined,
   }));

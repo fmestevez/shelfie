@@ -502,7 +502,10 @@ function ShelvesSection() {
 
 const GROUP_NOUN: Record<GroupKey, [string, string]> = {
   theme: ["theme", "themes"],
-  mechanic: ["mechanic", "mechanics"],
+  category: ["category", "categories"],
+  mechanic: ["mechanism", "mechanisms"],
+  family: ["family", "families"],
+  artist: ["artist", "artists"],
 };
 
 /**

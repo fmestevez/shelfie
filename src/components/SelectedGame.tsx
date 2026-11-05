@@ -171,7 +171,13 @@ function RotateButtons({ collId }: { collId: number }) {
   );
 }
 
-const GROUP_LABEL: Record<GroupKey, string> = { theme: "Theme group", mechanic: "Mechanic group" };
+const GROUP_LABEL: Record<GroupKey, string> = {
+  theme: "Theme group",
+  category: "Category group",
+  mechanic: "Mechanism group",
+  family: "Family group",
+  artist: "Artist group",
+};
 
 /** Which of its themes / mechanics this game is grouped under, for whichever of them the shelves are sorted by. */
 function GroupChoice({ game }: { game: Game }) {

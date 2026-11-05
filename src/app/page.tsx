@@ -25,7 +25,8 @@ const jsonLd = {
     "Import a BoardGameGeek collection by username",
     "Real box sizes from each game's BGG versions",
     "IKEA Kallax and Billy shelves, or custom shelves with your own measurements",
-    "Sort by game type, theme, mechanic, designer, publisher, series, colour, size, year, complexity or rating",
+    "Sort by type, theme, category, mechanism, family, designer, artist, publisher, series, colour, size, year, complexity or rating",
+    "Sort by player count, best player count, playing time, your plays or your own rating",
     "Upright, stacked or mixed boxes, rows behind rows, spacing and alignment",
     "Physics mode and manual drag-and-drop placement",
     "Five rooms, from a living room to a game café",
@@ -53,7 +54,7 @@ export default function Page() {
               measurements, in 3D. Plan your shelves before you buy them, or find space for your next game.
             </p>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-white/70">
-              <li>Sort by game type, theme, mechanic, designer, series or colour</li>
+              <li>Sort by type, theme, mechanism, player count, playing time, your plays or colour</li>
               <li>Stand boxes up, stack them, or mix both; use rows behind rows</li>
               <li>Grab boxes with real physics, or place every game yourself</li>
               <li>Fix box sizes, add or remove games, share a link or export an image</li>

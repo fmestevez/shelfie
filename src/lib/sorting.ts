@@ -5,7 +5,9 @@ export type SortKey =
   | "name"
   | "domain"
   | "theme"
+  | "category"
   | "mechanic"
+  | "family"
   | "designer"
   | "publisher"
   | "series"
@@ -13,15 +15,23 @@ export type SortKey =
   | "size"
   | "year"
   | "weight"
-  | "rating";
+  | "rating"
+  | "artist"
+  | "players"
+  | "bestWith"
+  | "playTime"
+  | "plays"
+  | "myRating";
 
 export type AreaKey = SortKey | "none";
 
 export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Name" },
-  { key: "domain", label: "Game type" },
+  { key: "domain", label: "Type" },
   { key: "theme", label: "Theme" },
-  { key: "mechanic", label: "Mechanic" },
+  { key: "category", label: "Category" },
+  { key: "mechanic", label: "Mechanism" },
+  { key: "family", label: "Family" },
   { key: "designer", label: "Designer" },
   { key: "publisher", label: "Publisher" },
   { key: "series", label: "Series" },
@@ -29,12 +39,18 @@ export const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "size", label: "Box size" },
   { key: "year", label: "Year" },
   { key: "weight", label: "Complexity" },
-  { key: "rating", label: "Rating" },
+  { key: "rating", label: "BGG rating" },
+  { key: "artist", label: "Artist" },
+  { key: "players", label: "Player count" },
+  { key: "bestWith", label: "Best player count" },
+  { key: "playTime", label: "Playing time" },
+  { key: "plays", label: "Your plays" },
+  { key: "myRating", label: "Your rating" },
 ];
 
 export const AREA_OPTIONS: { key: AreaKey; label: string }[] = [
   { key: "none", label: "No areas" },
-  { key: "domain", label: "Game type (BGG)" },
+  { key: "domain", label: "Type (BGG)" },
   ...SORT_OPTIONS.filter((o) => o.key !== "domain" && o.key !== "name"),
 ];
 
@@ -107,11 +123,11 @@ const themeOf = (g: Game) => {
   return themes.length ? themes : g.categories.filter((c) => c !== "Expansion for Base-game");
 };
 
-// ----- user-chosen theme / mechanic groups -----
+// ----- user-chosen groups (theme, category, mechanism, family, artist) -----
 
 /** Attributes where a game has several values and the user can choose which one it's grouped under. */
-export type GroupKey = "theme" | "mechanic";
-export const GROUP_KEYS: GroupKey[] = ["theme", "mechanic"];
+export type GroupKey = "theme" | "category" | "mechanic" | "family" | "artist";
+export const GROUP_KEYS: GroupKey[] = ["theme", "category", "mechanic", "family", "artist"];
 export const isGroupKey = (k: string): k is GroupKey => (GROUP_KEYS as string[]).includes(k);
 
 /** The user's say over a GroupKey: values ranked best first, and values never to group by. */
@@ -123,7 +139,11 @@ export type GroupPrefs = Partial<Record<GroupKey, GroupPref>>;
 
 export const groupValues: Record<GroupKey, (g: Game) => string[]> = {
   theme: themeOf,
+  category: (g) => g.categories.filter((c) => c !== "Expansion for Base-game"),
   mechanic: (g) => g.mechanics,
+  // BGG's "Admin:" families are housekeeping, not something to shelve by.
+  family: (g) => g.families.filter((f) => !f.startsWith("Admin:")),
+  artist: (g) => g.artists ?? [],
 };
 
 /** Every value in the collection with how many games have it, most common first. */
@@ -261,8 +281,12 @@ function keyer(games: Game[], key: SortKey, colors: Record<string, string>, pref
       };
     case "theme":
       return groupPicker(games, "theme", prefs.theme, "No theme");
+    case "category":
+      return groupPicker(games, "category", prefs.category, "No category");
     case "mechanic":
-      return groupPicker(games, "mechanic", prefs.mechanic, "No mechanic");
+      return groupPicker(games, "mechanic", prefs.mechanic, "No mechanism");
+    case "family":
+      return groupPicker(games, "family", prefs.family, "No family");
     case "designer":
       return grouped(
         primaryPicker(games, (g) => g.designers),
@@ -296,6 +320,53 @@ function keyer(games: Game[], key: SortKey, colors: Record<string, string>, pref
         const w = g.weight;
         const group = !w ? "Unrated" : w < 2 ? "Light" : w < 3 ? "Medium-light" : w < 3.75 ? "Medium-heavy" : "Heavy";
         return { group, order: w ? Math.min(4, Math.floor(w)) : 9, tie: w ?? 0 };
+      };
+    case "artist":
+      return groupPicker(games, "artist", prefs.artist, "Unknown artist");
+    case "players":
+      return (g) => {
+        const hi = g.maxPlayers;
+        if (!hi) return { group: "Unknown player count", order: 99, tie: 0 };
+        const i = hi === 1 ? 0 : hi === 2 ? 1 : hi <= 4 ? 2 : hi <= 6 ? 3 : 4;
+        const group = ["Solo only", "Up to 2 players", "Up to 4 players", "Up to 6 players", "7+ players"][i];
+        return { group, order: i, tie: (g.minPlayers ?? 1) * 100 + hi };
+      };
+    case "bestWith":
+      return (g) => {
+        const best = g.bestWith;
+        if (!best?.length) return { group: "No community vote", order: 999, tie: 0 };
+        const [lo, hi] = [Math.min(...best), Math.max(...best)];
+        return { group: lo === hi ? `Best with ${lo}` : `Best with ${lo}–${hi}`, order: lo * 100 + hi, tie: 0 };
+      };
+    case "playTime":
+      return (g) => {
+        const t = g.playTime;
+        if (!t) return { group: "Unknown length", order: 99, tie: 0 };
+        const buckets: [number, string][] = [
+          [30, "Under 30 min"],
+          [60, "30–60 min"],
+          [120, "1–2 hours"],
+          [180, "2–3 hours"],
+          [Infinity, "3+ hours"],
+        ];
+        const i = buckets.findIndex(([max]) => t <= max);
+        return { group: buckets[i][1], order: i, tie: t };
+      };
+    case "plays":
+      return (g) => {
+        // Most played first; games added by hand (not in your collection) last.
+        const n = g.plays;
+        if (n === undefined) return { group: "Not in your collection", order: 99, tie: 0 };
+        const i = n >= 10 ? 0 : n >= 5 ? 1 : n >= 2 ? 2 : n === 1 ? 3 : 4;
+        const group = ["10+ plays", "5–9 plays", "2–4 plays", "Played once", "Unplayed"][i];
+        return { group, order: i, tie: -n };
+      };
+    case "myRating":
+      return (g) => {
+        const r = g.myRating;
+        if (!r) return { group: "Not rated by you", order: 99, tie: 0 };
+        const bucket = Math.floor(r);
+        return { group: bucket >= 10 ? "10" : `${bucket}+`, order: -bucket, tie: -r };
       };
     case "rating":
       return (g) => {
