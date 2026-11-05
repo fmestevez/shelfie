@@ -176,6 +176,7 @@ function Interaction({
         d: s.build.depth,
       },
     ]);
+    type Slot = (typeof slots)[number];
     const front = shelves.reduce((m, s) => Math.max(m, s.build.depth), 0);
     const raycaster = new THREE.Raycaster();
     const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -190,6 +191,8 @@ function Interaction({
       goal: THREE.Vector3;
       last: number;
       history: { t: number; p: THREE.Vector3 }[];
+      /** The slide-in point last snapped to. */
+      snap?: { x: number; y: number };
     } | null = null;
     let raf = 0;
     let lastRay: THREE.Ray | null = null;
@@ -259,6 +262,79 @@ function Interaction({
       return hit ? Math.max(0, hit.time_of_impact - 0.05) : max;
     };
 
+    /** Slide the held box into slot `c` from the front at (x, y0); where it settles, or null if there's no room. */
+    const slideIn = (c: Slot, x: number, y0: number) => {
+      if (!held) return null;
+      const { body, he } = held;
+      const z0 = c.z + c.d + he.z + 12;
+      const z = z0 - sweep(body, he, new THREE.Vector3(x, y0, z0), new THREE.Vector3(0, 0, -1), z0 - (c.z + he.z));
+      if (z + he.z > c.z + c.d + OVERHANG_OK) return null;
+      const y = y0 - sweep(body, he, new THREE.Vector3(x, y0, z), new THREE.Vector3(0, -1, 0), y0 - he.y);
+      return new THREE.Vector3(x, y + 0.2, z);
+    };
+
+    /**
+     * The best place in slot `c` near the pointer. Besides the spot right under it, candidates line the box up with the
+     * slot's walls and with the sides and tops of the boxes already there, so a gap that's only just wide enough is easy
+     * to hit. The closest candidate with room wins; the previous one is kept unless another is clearly closer, so the
+     * box doesn't flicker between two spots.
+     */
+    const snap = (c: Slot, hit: THREE.Vector3) => {
+      if (!held) return null;
+      const { body, he } = held;
+      const [xMin, xMax] = [c.x + he.x + 0.05, c.x + c.w - he.x - 0.05];
+      const [yMin, yMax] = [c.y + he.y + 0.4, c.y + c.h - he.y - 0.1];
+      const xs = [hit.x, xMin, xMax];
+      const ys = [hit.y, yMin];
+      const region = new rapier.Cuboid(c.w / 2 + 1, c.h / 2 + 1, c.d / 2 + OVERHANG_OK);
+      const centre = { x: c.x + c.w / 2, y: c.y + c.h / 2, z: c.z + c.d / 2 + OVERHANG_OK / 2 };
+      world.intersectionsWithShape(
+        centre,
+        { x: 0, y: 0, z: 0, w: 1 },
+        region,
+        (collider) => {
+          const t = collider.translation();
+          const h = (collider.shape as InstanceType<typeof rapier.Cuboid>).halfExtents;
+          if (!h) return true;
+          const e = halfExtents([2 * h.x, 2 * h.y, 2 * h.z], toQuat(collider.rotation()));
+          xs.push(t.x + e.x + he.x + 0.1, t.x - e.x - he.x - 0.1);
+          ys.push(t.y + e.y + he.y + 0.4);
+          return true;
+        },
+        undefined,
+        undefined,
+        undefined,
+        body,
+      );
+
+      const reach = Math.max(10, 1.5 * he.x);
+      const candidates: { x: number; y: number; score: number }[] = [];
+      for (const rawX of xs) {
+        const x = clamp(rawX, xMin, xMax);
+        if (Math.abs(x - hit.x) > reach) continue;
+        for (const rawY of ys) {
+          const y = clamp(rawY, yMin, yMax);
+          const sticky = held.snap && Math.abs(held.snap.x - x) < 0.01 && Math.abs(held.snap.y - y) < 0.01 ? 2 : 0;
+          candidates.push({ x, y, score: Math.abs(x - hit.x) + 0.5 * Math.abs(y - hit.y) - sticky });
+        }
+      }
+      candidates.sort((a, b) => a.score - b.score);
+      const tried = new Set<string>();
+      for (const cand of candidates) {
+        const key = `${cand.x.toFixed(2)}|${cand.y.toFixed(2)}`;
+        if (tried.has(key)) continue;
+        if (tried.size >= 24) break;
+        tried.add(key);
+        const spot = slideIn(c, cand.x, cand.y);
+        if (spot) {
+          held.snap = { x: cand.x, y: cand.y };
+          return spot;
+        }
+      }
+      held.snap = undefined;
+      return null;
+    };
+
     /**
      * Where the held box goes for a pointer ray. Over a slot with room for it, it slides in until it meets the back or
      * another box, then settles. Otherwise it stays under the pointer: floating just in front of the shelves, or resting
@@ -267,7 +343,7 @@ function Interaction({
     const target = (ray: THREE.Ray) => {
       if (!held) return null;
       const { body, he } = held;
-      let best: (typeof slots)[number] | null = null;
+      let best: Slot | null = null;
       let hit: THREE.Vector3 | null = null;
       let bestD = Infinity;
       const box = new THREE.Box3();
@@ -281,15 +357,8 @@ function Interaction({
       }
 
       if (best && hit) {
-        const c = best;
-        const x = clamp(hit.x, c.x + he.x + 0.05, c.x + c.w - he.x - 0.05);
-        const y0 = clamp(hit.y, c.y + he.y + 0.4, c.y + c.h - he.y - 0.1);
-        const z0 = c.z + c.d + he.z + 12;
-        const z = z0 - sweep(body, he, new THREE.Vector3(x, y0, z0), new THREE.Vector3(0, 0, -1), z0 - (c.z + he.z));
-        if (z + he.z <= c.z + c.d + OVERHANG_OK) {
-          const y = y0 - sweep(body, he, new THREE.Vector3(x, y0, z), new THREE.Vector3(0, -1, 0), y0 - he.y);
-          return new THREE.Vector3(x, y + 0.2, z);
-        }
+        const spot = snap(best, hit);
+        if (spot) return spot;
       }
 
       const floatZ = front + he.z + FLOAT_GAP;
