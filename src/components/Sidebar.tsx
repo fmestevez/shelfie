@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { addGameFromBgg, loadCollection, loadDemo } from "@/lib/loadCollection";
 import { shareUrl } from "@/lib/share";
+import { REPO_URL } from "@/lib/site";
 import { type ExportMode, sceneApi } from "./three/sceneApi";
 import type { Align, Layout, Orientation, OverflowMode } from "@/lib/packing";
 import { CUSTOM_SHELF_DEFAULTS, type CustomShelf, customCell, customShelfModel, SHELF_MODELS } from "@/lib/shelves";
@@ -920,7 +921,15 @@ export function Sidebar({ games, sorted, layout }: { games: Game[]; sorted: Sort
       <SortingSection />
       <PlacementSection />
       <LookSection />
-      <Credit className="px-4 py-4 text-center text-[11px] text-white/45" />
+      <footer className="space-y-1 px-4 py-4 text-center text-[11px] text-white/45">
+        <p>
+          Free and open source:{" "}
+          <a href={REPO_URL} target="_blank" rel="noopener" className="underline hover:text-white">
+            view the code on GitHub
+          </a>
+        </p>
+        <Credit />
+      </footer>
     </>
   );
 }
