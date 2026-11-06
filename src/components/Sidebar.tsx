@@ -519,6 +519,8 @@ function GroupChooser({ games, groupKey }: { games: Game[]; groupKey: GroupKey }
   const countOf = useMemo(() => new Map(counts.map((c) => [c.value, c.count])), [counts]);
   const order = rankedValues(counts, pref);
   const hidden = new Set(pref?.hidden ?? []);
+  // Only count what's in this collection: a saved list can remember values from games since removed.
+  const offCount = order.filter((v) => hidden.has(v)).length;
   const [filter, setFilter] = useState("");
   const [dragging, setDragging] = useState<string | null>(null);
   const [noun, nouns] = GROUP_NOUN[groupKey];
@@ -554,7 +556,7 @@ function GroupChooser({ games, groupKey }: { games: Game[]; groupKey: GroupKey }
   const btn = "h-6 w-6 shrink-0 rounded text-white/75 hover:bg-white/15 hover:text-white disabled:opacity-25";
 
   return (
-    <MoreOptions label={`Choose ${nouns}${pref ? ` · customised${hidden.size ? `, ${hidden.size} off` : ""}` : ""}`}>
+    <MoreOptions label={`Choose ${nouns}${pref ? ` · customised${offCount ? `, ${offCount} off` : ""}` : ""}`}>
       <p className="text-[11px] leading-snug text-white/65">
         Untick the {nouns} you don&apos;t want to group by, and drag (or use ↑ ↓) to rank them. Each game goes under its
         highest-ranked {noun}, and groups appear on the shelves in this order.

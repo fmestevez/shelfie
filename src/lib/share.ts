@@ -2,9 +2,11 @@
 
 import { fetchAddedGames, loadCollection, loadDemo } from "./loadCollection";
 import type { CustomShelf } from "./shelves";
-import { type GroupKey, isGroupKey } from "./sorting";
+import { deflateSync, inflateSync, strFromU8, strToU8 } from "fflate";
+import { applyEdits } from "./edits";
+import { type GroupKey, type GroupPrefs, groupCounts, isGroupKey, rankedValues } from "./sorting";
 import { editsOf, useStore } from "./store";
-import type { CollectionEdits, Dims, GameOverride } from "./types";
+import type { CollectionEdits, Dims, Game, GameOverride } from "./types";
 
 /** Settings that travel with a share link. */
 const SETTINGS = [
@@ -45,7 +47,7 @@ interface SharePayload {
   o?: [number, Dims, number?, string?][];
   /** added games: [bggId, name, year?] */
   a?: [number, string, number?][];
-  /** per-game group choices: [collId, "theme" | "mechanic", value] */
+  /** per-game group choices: [collId, group key, value] */
   g?: [number, GroupKey, string][];
 }
 
@@ -53,14 +55,40 @@ interface SharePayload {
 const travellingOverrides = (edits: CollectionEdits) =>
   Object.entries(edits.overrides).filter(([id]) => Number(id) > 0);
 
-const toBase64Url = (s: string) =>
-  btoa(String.fromCharCode(...new TextEncoder().encode(s)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+function bytesToBase64Url(bytes: Uint8Array) {
+  // In chunks: spreading a big array into one call overflows the stack.
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
 
-const fromBase64Url = (s: string) =>
-  new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)));
+const base64UrlToBytes = (s: string) =>
+  Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+
+/**
+ * Group rankings as small as they can be while meaning the same thing: only values in this collection,
+ * and without the tail that's in default order anyway (the receiving end appends that by itself).
+ */
+function compactGroupPrefs(prefs: GroupPrefs, games: Game[]): GroupPrefs {
+  const out: GroupPrefs = {};
+  for (const key of Object.keys(prefs) as GroupKey[]) {
+    const pref = prefs[key];
+    if (!pref || !isGroupKey(key)) continue;
+    const counts = groupCounts(games, key);
+    const present = new Set(counts.map((c) => c.value));
+    const order = rankedValues(counts, pref);
+    // Shortest prefix after which the rest is exactly the default order of what's left.
+    let keep = order.length;
+    while (keep > 0) {
+      const head = new Set(order.slice(0, keep - 1));
+      const rest = counts.map((c) => c.value).filter((v) => !head.has(v));
+      if (rest.join("\u0000") !== order.slice(keep - 1).join("\u0000")) break;
+      keep--;
+    }
+    out[key] = { order: order.slice(0, keep), hidden: pref.hidden.filter((v) => present.has(v)) };
+  }
+  return out;
+}
 
 export function shareUrl(): string {
   const state = useStore.getState();
@@ -69,6 +97,7 @@ export function shareUrl(): string {
     u: state.username,
     s: Object.fromEntries(SETTINGS.map((k) => [k, state[k]])) as Settings,
   };
+  payload.s.groupPrefs = compactGroupPrefs(state.groupPrefs, applyEdits(state.games, edits));
   if (edits.removed.length) payload.r = edits.removed;
   const overrides = Object.entries(edits.overrides).filter(([, o]) => o.dims);
   // Added games get fresh ids on the other end, so their overrides can't travel.
@@ -81,10 +110,11 @@ export function shareUrl(): string {
     Object.entries(o.groups ?? {}).map(([k, v]) => [Number(id), k as GroupKey, v!] as [number, GroupKey, string]),
   );
   if (groupChoices.length) payload.g = groupChoices;
+  // Compressed, and after "#": the fragment never reaches the server, so no length limit there (a long ?s= got
+  // "414 URI too long" from Vercel).
   const url = new URL(window.location.href);
   url.search = "";
-  url.hash = "";
-  url.searchParams.set("s", toBase64Url(JSON.stringify(payload)));
+  url.hash = `z=${bytesToBase64Url(deflateSync(strToU8(JSON.stringify(payload)), { level: 9 }))}`;
   return url.toString();
 }
 
@@ -93,14 +123,17 @@ export function shareUrl(): string {
  * collection. Returns false when there's nothing to apply.
  */
 export function applyShareLink(): boolean {
-  const param = new URLSearchParams(window.location.search).get("s");
-  if (!param) return false;
+  const compressed = new URLSearchParams(window.location.hash.slice(1)).get("z");
+  // Links made before compression: plain base64 JSON in ?s=.
+  const plain = new URLSearchParams(window.location.search).get("s");
+  if (!compressed && !plain) return false;
   // Clean the address bar so later changes aren't confused with the shared state.
   window.history.replaceState(null, "", window.location.pathname);
 
   let payload: SharePayload;
   try {
-    payload = JSON.parse(fromBase64Url(param));
+    const bytes = compressed ? inflateSync(base64UrlToBytes(compressed)) : base64UrlToBytes(plain!);
+    payload = JSON.parse(strFromU8(bytes));
   } catch {
     useStore.getState().set({ error: "That share link is damaged." });
     return true;
